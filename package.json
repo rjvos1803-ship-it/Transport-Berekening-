@@ -1,20 +1,20 @@
 {
-  "name": "transport-tarief-netlify",
-  "version": "0.1.0",
+  "name": "transport-berekening",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "netlify:dev": "netlify dev"
+    "serve": "npx netlify dev"
   },
   "dependencies": {
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
-    "@vitejs/plugin-react": "^4.2.0",
-    "vite": "^5.0.0"
+    "vite": "^5.4.10",
+    "@netlify/functions": "^2.6.0"
   }
 }
