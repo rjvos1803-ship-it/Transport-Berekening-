@@ -1,5 +1,18 @@
 export async function exportQuoteToPDF(data){
-  const w = window.open('', '_blank', 'width=800,height=1000')
+  const LABELS_NL = {
+    base: 'Basistarief',
+    linehaul: 'Kilometerkosten',
+    handling: 'Behandelingskosten (aan-/afrijden + laden/lossen)',
+    km_levy: 'Kilometerheffing',
+    accessorials: 'Bijkosten',
+    weight_comp: 'Gewichtstoeslag',
+    area_comp: 'Oppervlaktetoeslag',
+    combi_discount: 'Combi-korting',
+    fuel: 'Brandstoftoeslag',
+    zone_flat: 'Zonetoeslag'
+  };
+
+  const w = window.open('', '_blank', 'width=800,height=1000');
   const style = `
     <style>
       body { font-family: system-ui, sans-serif; padding: 24px; }
@@ -9,9 +22,12 @@ export async function exportQuoteToPDF(data){
       td, th { padding: 6px 8px; border-bottom: 1px solid #eee; text-align: left; }
       .total { font-size: 18px; font-weight: 700; }
       .muted { color: #666; font-size: 12px; }
-    </style>`
+    </style>
+  `;
   const rows = Object.entries(data.breakdown || {})
-    .map(([k,v]) => `<tr><td>${k}</td><td>€ ${Number(v).toFixed(2)}</td></tr>`).join('')
+    .map(([k,v]) => `<tr><td>${LABELS_NL[k] || k}</td><td>€ ${Number(v).toFixed(2)}</td></tr>`)
+    .join('');
+
   const html = `
     <!doctype html><html><head><meta charset="utf-8"><title>Coatinc Transport berekening</title>${style}</head>
     <body>
@@ -29,8 +45,9 @@ export async function exportQuoteToPDF(data){
       <h2>Berekening</h2>
       <table>${rows}</table>
       <p class="total">Totaal: € ${Number(data.total).toFixed(2)} ${data.currency||'EUR'}</p>
-      <p class="muted">Formule: max(min_fee, som + brandstoftoeslag). Chargeable: max(kg, m² × kg_per_m2).</p>
+      <p class="muted">Formule: minimumtarief + (km + tijd + opties) − combi-korting + brandstoftoeslag (+ zonetoeslag). Laden/lossen 1,5u voor volle trailer, naar rato bij deels vol. Aan-/afrijden elk minimaal 0,5u.</p>
       <script>window.onload = () => setTimeout(()=>window.print(), 300);</script>
-    </body></html>`
+    </body></html>
+  `;
   w.document.open(); w.document.write(html); w.document.close();
 }
