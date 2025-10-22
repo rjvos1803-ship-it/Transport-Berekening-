@@ -1,6 +1,6 @@
 {
-  "min_fee": 75,
-  "eur_per_km_base": 0.75,
+  "min_fee": 95,
+  "eur_per_km_base": 1.50,
   "per_kg_km": 0.02,
   "per_m3_km": 0.01,
   "fuel_pct": 0.18,
