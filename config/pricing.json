@@ -1,28 +1,26 @@
 {
-  "min_fee": 75,
-  "eur_per_km_base": 0.75,
-
-  // OUDE componenten uitzetten
-  "per_kg_km": 0,
-  "per_m2_km": 0,
+  "min_fee": 110.0,
+  "eur_per_km_base": 0.8,
 
   "fuel_pct": 0.18,
-  "kg_per_m2": 150,
 
   "handling": {
     "approach_min_hours": 0.5,
     "depart_min_hours": 0.5,
     "full_trailer_load_unload_hours": 1.5,
-    "rate_per_hour": 40
-  },
-
-  "discounts": {
-    "combi_pct": 0.10
+    "rate_per_hour": 92.5
   },
 
   "km_levy": {
-    "enabled_default": false,
     "eur_per_km": 0.12
+  },
+
+  "beladingsgraad": {
+    "one_pallet": 0.05,
+    "quarter": 0.25,
+    "half": 0.5,
+    "three_quarter": 0.75,
+    "full": 1.0
   },
 
   "trailers": {
@@ -31,7 +29,9 @@
     "koel":      { "volume_m2": 33.32, "payload_kg": 22000, "multiplier": 1.15 }
   },
 
-  "zones": { "NL": { "flat": 0 }, "BE": { "flat": 20 }, "DE": { "flat": 35 } },
+  "zones": { "NL": { "flat": 0 }, "BE": { "flat": 0 }, "DE": { "flat": 0 } },
 
-  "accessorials": { "adr": 45, "city_delivery": 25 }
+  "accessorials": {
+    "city_delivery": 0
+  }
 }
