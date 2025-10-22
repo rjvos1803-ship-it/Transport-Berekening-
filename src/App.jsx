@@ -252,7 +252,7 @@ export default function App() {
 
       {error && <p style={{ color: '#b00020', marginTop: '12px' }}>Fout: {error}</p>}
 
-      {quote && (
+            {quote && (
         <div
           style={{
             marginTop: '16px',
@@ -262,15 +262,14 @@ export default function App() {
           }}
         >
           <h2 style={{ fontWeight: 600, marginBottom: '8px' }}>Resultaat</h2>
-          <p>
-            <strong>Afstand:</strong> {quote.derived.distance_km} km
-          </p>
+          <p><strong>Afstand:</strong> {quote.derived.distance_km} km</p>
           <p>
             <strong>Vulling:</strong>{' '}
             {quote.derived.usage_ratio ? `${(quote.derived.usage_ratio * 100).toFixed(0)}%` : '—'}
           </p>
           <p>
-            <strong>Tijd aan-/afrijden + laden/lossen:</strong> {quote.derived.handling_total_hours} uur
+            <strong>Tijd aan-/afrijden + laden/lossen:</strong>{' '}
+            {quote.derived.handling_total_hours} uur
           </p>
 
           <div
@@ -292,6 +291,7 @@ export default function App() {
               )
             })}
           </div>
+
           <hr style={{ margin: '12px 0' }} />
           <p style={{ fontSize: '20px' }}>
             <strong>Totaal:</strong> € {Number(quote.total).toFixed(2)}
@@ -301,5 +301,5 @@ export default function App() {
     </div>
   )
 }
- )
+
 }
