@@ -252,7 +252,7 @@ export default function App() {
 
       {error && <p style={{ color: '#b00020', marginTop: '12px' }}>Fout: {error}</p>}
 
-            {quote && (
+      {quote && (
         <div
           style={{
             marginTop: '16px',
@@ -302,4 +302,3 @@ export default function App() {
   )
 }
 
-}
