@@ -140,6 +140,4 @@ export default async (request) => {
       status: 500, headers: { "content-type": "application/json" }
     });
   }
-};
-
-};
+}
