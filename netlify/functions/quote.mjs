@@ -132,11 +132,9 @@ export default async (request) => {
       currency: "EUR"
     };
 
-    return new Response(JSON.stringify(payload), {
-      status: 200, headers: { "content-type": "application/json" }
-    });
-  } catch (e) {
-    return new Response(JSON.stringify({ error: "Internal error", detail: String(e) }), {
-      status: 500, headers: { "content-type": "application/json" }
-    });
+     return new Response(JSON.stringify({ error: "Internal error", detail: String(e) }), {
+    status: 500,
+    headers: { "content-type": "application/json" }
+  });
   }
+}
