@@ -1,5 +1,5 @@
 // netlify/functions/quote.mjs
-// Netlify Functions (ESM) - Transport berekening met trailer multipliers, 1× pallet staffel en Autolaadkraan (+% op uurtarief)
+// Netlify Functions (ESM) - Transport berekening met trailer multipliers, 1× pallet staffel en Autolaadkraan 
 
 import fs from "fs/promises";
 import path from "path";
@@ -15,7 +15,7 @@ const DEFAULT_CFG = {
     rate_per_hour: 92.5
   },
   km_levy: { eur_per_km: 0.12 },
-  auto_crane: { handling_rate_multiplier: 1.28 },
+  auto_crane: { handling_rate_multiplier: 1.35 },
   one_pallet_pricing: {
     mode: "flat_per_distance",
     tiers: [
@@ -97,7 +97,7 @@ function calcOnePalletFlat(cfg, distance_km, options) {
     const per_op_full = h.full_trailer_load_unload_hours ?? 1.5;
 
     const baseRate = h.rate_per_hour ?? 92.5;
-    const craneMult = options.autolaad_kraan ? (cfg.auto_crane?.handling_rate_multiplier ?? 1.28) : 1;
+    const craneMult = options.autolaad_kraan ? (cfg.auto_crane?.handling_rate_multiplier ?? 1.35) : 1;
     const rate = baseRate * craneMult;
 
     const ratio = cfg.beladingsgraad?.one_pallet ?? 0.05;
