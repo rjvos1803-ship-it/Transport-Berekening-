@@ -1,7 +1,6 @@
 {
   "min_fee": 110.0,
   "eur_per_km_base": 0.8,
-
   "fuel_pct": 0.18,
 
   "handling": {
@@ -11,9 +10,7 @@
     "rate_per_hour": 92.5
   },
 
-  "km_levy": {
-    "eur_per_km": 0.12
-  },
+  "km_levy": { "eur_per_km": 0.12 },
 
   "beladingsgraad": {
     "one_pallet": 0.05,
@@ -24,12 +21,17 @@
   },
 
   "trailers": {
-    "tautliner": { "volume_m2": 33.32, "payload_kg": 24000, "multiplier": 1.0 },
-    "mega":      { "volume_m2": 33.73, "payload_kg": 24000, "multiplier": 1.05 },
-    "koel":      { "volume_m2": 33.32, "payload_kg": 22000, "multiplier": 1.15 }
+    "vlakke":     { "label": "Vlakke trailer",     "volume_m2": 33.0, "payload_kg": 24000, "multiplier": 1.00 },
+    "uitschuif":  { "label": "Uitschuif trailer",  "volume_m2": 33.0, "payload_kg": 23000, "multiplier": 1.10 },
+    "dieplader":  { "label": "Dieplader",          "volume_m2": 30.0, "payload_kg": 22000, "multiplier": 1.20 },
+    "tautliner":  { "label": "Tautliner",          "volume_m2": 33.0, "payload_kg": 24000, "multiplier": 1.05 }
   },
 
-  "zones": { "NL": { "flat": 0 }, "BE": { "flat": 0 }, "DE": { "flat": 0 } },
+  "zones": {
+    "NL": { "flat": 0 },
+    "BE": { "flat": 0 },
+    "DE": { "flat": 0 }
+  },
 
   "accessorials": {
     "city_delivery": 0
