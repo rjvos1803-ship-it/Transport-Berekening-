@@ -17,9 +17,10 @@ const DEFAULT_CFG = {
     one_pallet: 0.05, quarter: 0.25, half: 0.5, three_quarter: 0.75, full: 1.0
   },
   trailers: {
-    tautliner: { volume_m2: 33.32, payload_kg: 24000, multiplier: 1.0 },
-    mega:      { volume_m2: 33.73, payload_kg: 24000, multiplier: 1.05 },
-    koel:      { volume_m2: 33.32, payload_kg: 22000, multiplier: 1.15 }
+    vlakke:    { label: "Vlakke trailer",    volume_m2: 33.0, payload_kg: 24000, multiplier: 1.00 },
+    uitschuif: { label: "Uitschuif trailer", volume_m2: 33.0, payload_kg: 23000, multiplier: 1.10 },
+    dieplader: { label: "Dieplader",         volume_m2: 30.0, payload_kg: 22000, multiplier: 1.20 },
+    tautliner: { label: "Tautliner",         volume_m2: 33.0, payload_kg: 24000, multiplier: 1.05 }
   },
   zones: { NL: { flat: 0 }, BE: { flat: 0 }, DE: { flat: 0 } },
   accessorials: { city_delivery: 0 }
@@ -61,15 +62,10 @@ const GEOCODER = {
   }
 };
 
-/**
- * Netlify Function handler (Runtime v2)
- * - Request: uses WHATWG Request
- * - Return: new Response()
- */
 export default async (request) => {
   try {
     const body = request.method === "POST" ? await request.json() : {};
-    const { from, to, trailer_type = "tautliner", options = {} } = body || {};
+    const { from, to, trailer_type = "vlakke", options = {} } = body || {};
 
     if (!from || !to) {
       return new Response(JSON.stringify({ error: "from en to zijn verplicht" }), {
@@ -80,9 +76,9 @@ export default async (request) => {
 
     const cfg = await loadConfig();
     const distance_km = await GEOCODER.distanceKm(from, to);
-    const trailer = cfg.trailers[trailer_type] || cfg.trailers.tautliner;
+    const trailer = cfg.trailers[trailer_type] || cfg.trailers.vlakke;
 
-    // Beladingsgraad bepalen (0..1)
+    // beladingsgraad 0..1 (1 pallet, 1/4, 1/2, 3/4, vol)
     let ratio = 0;
     if (typeof options.load_fraction === "number") {
       ratio = options.load_fraction;
@@ -91,7 +87,7 @@ export default async (request) => {
     }
     ratio = Math.max(0, Math.min(1, Number.isFinite(ratio) ? ratio : 0));
 
-    // Handling-uren
+    // handling (aan-/afrij + laden/lossen naar rato)
     const h = cfg.handling || {};
     const approach = h.approach_min_hours ?? 0.5;
     const depart   = h.depart_min_hours   ?? 0.5;
@@ -103,19 +99,18 @@ export default async (request) => {
     const handling_total_hours = approach + depart + load_hours + unload_hours;
     const handling_cost = handling_total_hours * rate;
 
-    // Kilometerkosten
+    // kilometerkosten incl. trailer multiplier
     const linehaul = distance_km * (cfg.eur_per_km_base || 0) * (trailer.multiplier || 1);
 
-    // Kilometerheffing (optioneel)
+    // kilometerheffing (checkbox)
     const kmlevy_rate = (cfg.km_levy?.eur_per_km) ?? 0.12;
     const km_levy = options.km_levy ? kmlevy_rate * distance_km : 0;
 
-    // Bijkosten (alleen binnenstad, ADR is verwijderd)
+    // bijkosten (binnenstad)
     let accessorials_fixed = 0;
     if (options.city_delivery) accessorials_fixed += cfg.accessorials?.city_delivery || 0;
 
     const base = cfg.min_fee || 0;
-
     const subtotal = base + linehaul + handling_cost + km_levy + accessorials_fixed;
     const fuel = subtotal * (cfg.fuel_pct || 0);
 
@@ -127,13 +122,17 @@ export default async (request) => {
     const total = Math.max(cfg.min_fee || 0, subtotal + fuel + zone_flat);
 
     const payload = {
-      inputs: { from, to, trailer_type, options, load_ratio: ratio },
+      inputs: {
+        from, to, trailer_type,
+        trailer_type_label: trailer.label || trailer_type,
+        options
+      },
       derived: {
         distance_km,
         handling_total_hours: Number(handling_total_hours.toFixed(2))
       },
       breakdown: {
-        base,
+        base: Number(base.toFixed(2)),
         linehaul: Number(linehaul.toFixed(2)),
         handling: Number(handling_cost.toFixed(2)),
         km_levy: Number(km_levy.toFixed(2)),
@@ -156,4 +155,3 @@ export default async (request) => {
     });
   }
 };
-
