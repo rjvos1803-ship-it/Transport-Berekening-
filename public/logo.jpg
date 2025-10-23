@@ -1,1 +1,16 @@
-logo.jpg
+Transport-Berekening-/
+├── src/
+│   ├── App.jsx
+│   ├── lib/
+│   │   └── pdfutil.js
+│   └── main.jsx
+│
+├── public/
+│   ├── logo.jpg    👈  jouw Coatinc-logo (zie hieronder)
+│   └── .gitkeep    (optioneel, zorgt dat de map blijft bestaan)
+│
+├── netlify/
+│   └── functions/
+│
+├── package.json
+└── vite.config.js
