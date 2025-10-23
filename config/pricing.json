@@ -12,6 +12,8 @@
 
   "km_levy": { "eur_per_km": 0.12 },
 
+  "auto_crane": { "handling_rate_multiplier": 1.28 },
+
   "one_pallet_pricing": {
     "mode": "flat_per_distance",
     "tiers": [
@@ -19,7 +21,6 @@
       { "max_km": 100, "price": 150 }
     ],
     "price_above": 225,
-
     "include_min_fee": false,
     "include_handling": false,
     "include_fuel": false,
@@ -50,5 +51,6 @@
 
   "accessorials": {
     "city_delivery": 0
-    }
+  }
 }
+
