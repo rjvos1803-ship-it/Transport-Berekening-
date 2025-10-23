@@ -1,13 +1,13 @@
 {
-  "min_fee": 110.0,
-  "eur_per_km_base": 0.8,
+  "min_fee": 65.0,
+  "eur_per_km_base": 0.2,
   "fuel_pct": 0.18,
 
   "handling": {
     "approach_min_hours": 0.5,
     "depart_min_hours": 0.5,
     "full_trailer_load_unload_hours": 1.5,
-    "rate_per_hour": 92.5
+    "rate_per_hour": 90.00
   },
 
   "km_levy": { "eur_per_km": 0.12 },
