@@ -86,7 +86,7 @@ function calcHandlingSplit(cfg, options, ratio, rateOverride) {
   const per_op_full = h.full_trailer_load_unload_hours ?? 1.5;
 
   const baseRate  = h.rate_per_hour ?? 92.5;
-  const craneMult = options.autolaad_kraan ? (cfg.auto_crane?.handling_rate_multiplier ?? 1.28) : 1;
+  const craneMult = options.autolaad_kraan ? (cfg.auto_crane?.handling_rate_multiplier ?? 1.35) : 1;
   const rate = rateOverride ?? (baseRate * craneMult);
 
   const load_h   = options.load   ? per_op_full * ratio : 0;
