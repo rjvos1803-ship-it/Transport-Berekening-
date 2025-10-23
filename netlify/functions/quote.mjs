@@ -1,7 +1,10 @@
 // netlify/functions/quote.mjs
+// Netlify Functions (ESM) - Transport berekening met trailer multipliers en 1× pallet staffel
+
 import fs from "fs/promises";
 import path from "path";
 
+// --- Default config fallback (wanneer config/pricing.json ontbreekt) --------------------------
 const DEFAULT_CFG = {
   min_fee: 110.0,
   eur_per_km_base: 0.8,
@@ -16,7 +19,7 @@ const DEFAULT_CFG = {
   one_pallet_pricing: {
     mode: "flat_per_distance",
     tiers: [
-      { max_km: 50, price: 110 },
+      { max_km: 50,  price: 110 },
       { max_km: 100, price: 150 }
     ],
     price_above: 225,
@@ -39,6 +42,7 @@ const DEFAULT_CFG = {
   accessorials: { city_delivery: 0 }
 };
 
+// --- Config laden -----------------------------------------------------------------------------
 async function loadConfig() {
   try {
     const p = path.resolve("config/pricing.json");
@@ -49,6 +53,7 @@ async function loadConfig() {
   }
 }
 
+// --- Google Directions afstand (km) -----------------------------------------------------------
 const GEOCODER = {
   async distanceKm(from, to) {
     const key = process.env.GOOGLE_MAPS_API_KEY;
@@ -71,21 +76,24 @@ const GEOCODER = {
       throw new Error(`Directions API fout: ${data.status || "geen route"}`);
     }
     const meters = data.routes[0].legs.reduce((s, l) => s + (l.distance?.value || 0), 0);
+    // Altijd minstens 1 km om deling door 0 te voorkomen
     return Math.max(1, Math.round(meters / 1000));
   }
 };
 
+// --- 1× pallet staffel ------------------------------------------------------------------------
 function calcOnePalletFlat(cfg, distance_km, options) {
   const op = cfg.one_pallet_pricing || {};
   if (op.mode !== "flat_per_distance") return null;
 
-  // staffel
+  // 1) Staffelkosten
   let price = op.price_above ?? 0;
   for (const t of op.tiers || []) {
     if (distance_km <= t.max_km) { price = t.price; break; }
   }
 
-  // optionele aanvullers
+  // 2) Optionele aanvullers
+  // Handling
   let handling_cost = 0;
   if (op.include_handling) {
     const h = cfg.handling || {};
@@ -100,23 +108,26 @@ function calcOnePalletFlat(cfg, distance_km, options) {
     handling_cost = handling_total_hours * rate;
   }
 
+  // Km-heffing
   let km_levy = 0;
   if (op.include_km_levy && options.km_levy) {
     const kmlevy_rate = (cfg.km_levy?.eur_per_km) ?? 0.12;
     km_levy = kmlevy_rate * distance_km;
   }
 
+  // Binnenstad
   let accessorials_fixed = 0;
   if (op.include_city_delivery && options.city_delivery) {
     accessorials_fixed += cfg.accessorials?.city_delivery || 0;
   }
 
+  // Subtotaal + min fee
   let subtotal = price + handling_cost + km_levy + accessorials_fixed;
-
   if (op.include_min_fee) {
     subtotal = Math.max(subtotal, cfg.min_fee || 0);
   }
 
+  // Brandstof
   const fuel = op.include_fuel ? subtotal * (cfg.fuel_pct || 0) : 0;
 
   return {
@@ -133,6 +144,7 @@ function calcOnePalletFlat(cfg, distance_km, options) {
   };
 }
 
+// --- Handler ----------------------------------------------------------------------------------
 export default async (request) => {
   try {
     const body = request.method === "POST" ? await request.json() : {};
@@ -145,11 +157,12 @@ export default async (request) => {
       });
     }
 
+    // Config + afstand
     const cfg = await loadConfig();
     const distance_km = await GEOCODER.distanceKm(from, to);
     const trailer = cfg.trailers[trailer_type] || cfg.trailers.vlakke;
 
-    // --- Speciale logica: 1× pallet staffel ---
+    // --- Speciale logica: 1× pallet (staffel) ---
     const isOnePallet =
       options.load_grade === "one_pallet" ||
       (typeof options.load_fraction === "number" && options.load_fraction <= 0.06);
@@ -165,7 +178,7 @@ export default async (request) => {
           },
           derived: {
             distance_km,
-            handling_total_hours: 0 // niet getoond bij flat (of reken uit als include_handling=true)
+            handling_total_hours: 0 // (of bereken indien include_handling=true)
           },
           breakdown: {
             base: flat.breakdown.base,
@@ -186,10 +199,10 @@ export default async (request) => {
         });
       }
     }
-    // --- Einde speciale palletlogica ---
+    // --- Einde 1× pallet ---
 
-    // Normale berekening
-    // beladingsgraad 0..1
+    // --- Normale berekening voor overige beladingsgraden ---
+    // Beladingsgraad 0..1
     let ratio = 0;
     if (typeof options.load_fraction === "number") {
       ratio = options.load_fraction;
@@ -198,7 +211,7 @@ export default async (request) => {
     }
     ratio = Math.max(0, Math.min(1, Number.isFinite(ratio) ? ratio : 0));
 
-    // handling
+    // Handling (aan-/afrijden + laden/lossen naar rato)
     const h = cfg.handling || {};
     const approach = h.approach_min_hours ?? 0.5;
     const depart   = h.depart_min_hours   ?? 0.5;
@@ -210,17 +223,18 @@ export default async (request) => {
     const handling_total_hours = approach + depart + load_hours + unload_hours;
     const handling_cost = handling_total_hours * rate;
 
-    // kilometerkosten incl. trailer multiplier
+    // Kilometerkosten (€/km * trailer multiplier)
     const linehaul = distance_km * (cfg.eur_per_km_base || 0) * (trailer.multiplier || 1);
 
-    // kilometerheffing
+    // Km-heffing (checkbox)
     const kmlevy_rate = (cfg.km_levy?.eur_per_km) ?? 0.12;
     const km_levy = options.km_levy ? kmlevy_rate * distance_km : 0;
 
-    // bijkosten
+    // Bijkosten (binnenstad)
     let accessorials_fixed = 0;
     if (options.city_delivery) accessorials_fixed += cfg.accessorials?.city_delivery || 0;
 
+    // Subtotaal + brandstof + zone
     const base = cfg.min_fee || 0;
     const subtotal = base + linehaul + handling_cost + km_levy + accessorials_fixed;
     const fuel = subtotal * (cfg.fuel_pct || 0);
@@ -260,12 +274,10 @@ export default async (request) => {
       headers: { "content-type": "application/json" }
     });
   } catch (e) {
+    // Fallback error-response
     return new Response(JSON.stringify({ error: "Internal error", detail: String(e) }), {
       status: 500,
       headers: { "content-type": "application/json" }
     });
-  }
-};
-
   }
 };
