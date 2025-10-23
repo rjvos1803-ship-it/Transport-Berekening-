@@ -35,6 +35,7 @@ export default function App() {
     trailer_type: 'vlakke',
     load_grade: 'quarter',
     city_delivery: false,
+    autolaad_kraan: false,
     load: false,
     unload: false,
     km_levy: false,
@@ -56,6 +57,7 @@ export default function App() {
       trailer_type: 'vlakke',
       load_grade: 'quarter',
       city_delivery: false,
+      autolaad_kraan: false,
       load: false,
       unload: false,
       km_levy: false,
@@ -84,6 +86,7 @@ export default function App() {
           trailer_type: form.trailer_type,
           options: {
             city_delivery: form.city_delivery,
+            autolaad_kraan: form.autolaad_kraan,
             load: form.load,
             unload: form.unload,
             km_levy: form.km_levy,
@@ -95,7 +98,6 @@ export default function App() {
       const data = await res.json()
       if (!res.ok) throw new Error(data.detail || data.error || 'Berekening mislukt')
 
-      // labels voor UI + PDF
       data.inputs.trailer_type_label =
         TRAILER_LABELS[data.inputs.trailer_type] || data.inputs.trailer_type
       data.inputs.load_label = loadObj.label
@@ -209,6 +211,10 @@ export default function App() {
               <label className="flex items-center gap-2 mb-1">
                 <input type="checkbox" name="city_delivery" checked={form.city_delivery} onChange={onChange} />
                 <span>Binnenstad</span>
+              </label>
+              <label className="flex items-center gap-2 mb-1">
+                <input type="checkbox" name="autolaad_kraan" checked={form.autolaad_kraan} onChange={onChange} />
+                <span>Autolaadkraan (+28% op uurtarief)</span>
               </label>
               <label className="flex items-center gap-2 mb-1">
                 <input type="checkbox" name="load" checked={form.load} onChange={onChange} />
