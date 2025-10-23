@@ -1,4 +1,4 @@
-// netlify/functions/quote.js (ESM, Runtime v2)
+// netlify/functions/quote.mjs  (ESM, Netlify Functions v2)
 import fs from "fs/promises";
 import path from "path";
 
@@ -39,12 +39,19 @@ const GEOCODER = {
   async distanceKm(from, to) {
     const key = process.env.GOOGLE_MAPS_API_KEY;
     if (!key) throw new Error("GOOGLE_MAPS_API_KEY ontbreekt in environment variables");
+
     const params = new URLSearchParams({
-      origin: from, destination: to, units: "metric", language: "nl", key
+      origin: from,
+      destination: to,
+      units: "metric",
+      language: "nl",
+      key
     });
+
     const url = `https://maps.googleapis.com/maps/api/directions/json?${params.toString()}`;
     const res = await fetch(url);
     if (!res.ok) throw new Error(`Directions API HTTP ${res.status}`);
+
     const data = await res.json();
     if (data.status !== "OK" || !data.routes?.[0]?.legs?.length) {
       throw new Error(`Directions API fout: ${data.status || "geen route"}`);
@@ -54,6 +61,11 @@ const GEOCODER = {
   }
 };
 
+/**
+ * Netlify Function handler (Runtime v2)
+ * - Request: uses WHATWG Request
+ * - Return: new Response()
+ */
 export default async (request) => {
   try {
     const body = request.method === "POST" ? await request.json() : {};
@@ -61,7 +73,8 @@ export default async (request) => {
 
     if (!from || !to) {
       return new Response(JSON.stringify({ error: "from en to zijn verplicht" }), {
-        status: 400, headers: { "content-type": "application/json" }
+        status: 400,
+        headers: { "content-type": "application/json" }
       });
     }
 
@@ -69,7 +82,7 @@ export default async (request) => {
     const distance_km = await GEOCODER.distanceKm(from, to);
     const trailer = cfg.trailers[trailer_type] || cfg.trailers.tautliner;
 
-    // Beladingsgraad (0..1) via UI: key of directe fraction
+    // Beladingsgraad bepalen (0..1)
     let ratio = 0;
     if (typeof options.load_fraction === "number") {
       ratio = options.load_fraction;
@@ -78,7 +91,7 @@ export default async (request) => {
     }
     ratio = Math.max(0, Math.min(1, Number.isFinite(ratio) ? ratio : 0));
 
-    // Handling
+    // Handling-uren
     const h = cfg.handling || {};
     const approach = h.approach_min_hours ?? 0.5;
     const depart   = h.depart_min_hours   ?? 0.5;
@@ -90,14 +103,14 @@ export default async (request) => {
     const handling_total_hours = approach + depart + load_hours + unload_hours;
     const handling_cost = handling_total_hours * rate;
 
-    // Afstandskosten
+    // Kilometerkosten
     const linehaul = distance_km * (cfg.eur_per_km_base || 0) * (trailer.multiplier || 1);
 
-    // Kilometerheffing
+    // Kilometerheffing (optioneel)
     const kmlevy_rate = (cfg.km_levy?.eur_per_km) ?? 0.12;
     const km_levy = options.km_levy ? kmlevy_rate * distance_km : 0;
 
-    // Vaste bijkosten
+    // Bijkosten (alleen binnenstad, ADR is verwijderd)
     let accessorials_fixed = 0;
     if (options.city_delivery) accessorials_fixed += cfg.accessorials?.city_delivery || 0;
 
@@ -132,9 +145,15 @@ export default async (request) => {
       currency: "EUR"
     };
 
-     return new Response(JSON.stringify({ error: "Internal error", detail: String(e) }), {
-    status: 500,
-    headers: { "content-type": "application/json" }
-  });
+    return new Response(JSON.stringify(payload), {
+      status: 200,
+      headers: { "content-type": "application/json" }
+    });
+  } catch (e) {
+    return new Response(JSON.stringify({ error: "Internal error", detail: String(e) }), {
+      status: 500,
+      headers: { "content-type": "application/json" }
+    });
   }
-}
+};
+
