@@ -286,26 +286,113 @@ export default function App() {
         </form>
 
         {quote && (
-          <div className="mt-6 bg-white border rounded-xl shadow-sm p-4">
-            <h2 className="font-semibold mb-3">Resultaat</h2>
+  <section className="mt-6">
+    <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
 
-            <div className="grid sm:grid-cols-2 gap-y-1 gap-x-8 text-sm">
-              <div className="flex justify-between">
-                <span className="text-gray-600">Afstand</span>
-                <span className="font-medium">{quote.derived.distance_km} km</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Beladingsgraad</span>
-                <span className="font-medium">
-                  {quote.inputs?.options?.load_fraction ? `${(quote.inputs.options.load_fraction*100).toFixed(0)}%` : '—'}
-                  {quote.inputs?.load_label ? ` (${quote.inputs.load_label})` : ''}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Uurtarief handling</span>
-                <span className="font-medium">€ {(quote.derived.rate_used ?? 0).toFixed(2)}/u</span>
-              </div>
-            </div>
+      {/* Header: 3 compacte stats */}
+      <div className="grid sm:grid-cols-3 gap-0 divide-y sm:divide-y-0 sm:divide-x divide-gray-200 bg-gray-50/60">
+        <div className="p-4">
+          <div className="text-xs uppercase tracking-wider text-gray-500">Afstand</div>
+          <div className="mt-1 text-lg font-semibold">{quote.derived.distance_km} km</div>
+        </div>
+        <div className="p-4">
+          <div className="text-xs uppercase tracking-wider text-gray-500">Beladingsgraad</div>
+          <div className="mt-1 text-lg font-semibold">
+            {quote.inputs?.options?.load_fraction
+              ? `${(quote.inputs.options.load_fraction * 100).toFixed(0)}%`
+              : '—'}
+            {quote.inputs?.load_label ? (
+              <span className="ml-2 text-sm font-normal text-gray-500">
+                ({quote.inputs.load_label})
+              </span>
+            ) : null}
+          </div>
+        </div>
+        <div className="p-4">
+          <div className="text-xs uppercase tracking-wider text-gray-500">Uurtarief handling</div>
+          <div className="mt-1 text-lg font-semibold">
+            € {(quote.derived.rate_used ?? 0).toFixed(2)}
+            <span className="text-sm font-normal text-gray-500"> /u</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Breakdown als "tabel" */}
+      <div className="p-4">
+        <div className="text-sm font-semibold mb-2">Resultaat</div>
+
+        <div className="rounded-xl border border-gray-200 overflow-hidden">
+          <div className="divide-y divide-gray-200">
+            {[
+              'base',
+              'linehaul',
+              'handling_approach',
+              'handling_depart',
+              'handling_load',
+              'handling_unload',
+              'km_levy',
+              'accessorials',
+              'fuel',
+              'zone_flat',
+              'discount',
+            ]
+              .map((k) => {
+                const v = quote.breakdown?.[k];
+                if (v == null || Math.abs(Number(v)) < 0.005) return null;
+
+                const labels = {
+                  base: 'Basistarief',
+                  linehaul: 'Kilometerkosten',
+                  handling_approach: 'Aanrijden',
+                  handling_depart: 'Afrijden',
+                  handling_load: 'Laden',
+                  handling_unload: 'Lossen',
+                  km_levy: 'Kilometerheffing',
+                  accessorials: 'Bijkosten',
+                  fuel: 'Brandstoftoeslag',
+                  zone_flat: 'Zonetoeslag',
+                  discount: 'Korting gecombineerd transport',
+                };
+
+                const hours = (() => {
+                  const d = quote.derived || {};
+                  if (k === 'handling_approach') return ` (${(d.approach_hours ?? 0)} u)`;
+                  if (k === 'handling_depart') return ` (${(d.depart_hours ?? 0)} u)`;
+                  if (k === 'handling_load') return ` (${(d.load_hours ?? 0)} u)`;
+                  if (k === 'handling_unload') return ` (${(d.unload_hours ?? 0)} u)`;
+                  return '';
+                })();
+
+                const isDiscount = k === 'discount' && Number(v) < 0;
+
+                return (
+                  <div
+                    key={k}
+                    className="grid grid-cols-[1fr_auto] items-center px-4 py-2 bg-white"
+                  >
+                    <div className="text-sm text-gray-600">
+                      {labels[k] ?? k}
+                      <span className="text-gray-400">{hours}</span>
+                    </div>
+                    <div className={`text-sm font-medium tabular-nums ${isDiscount ? 'text-emerald-600' : ''}`}>
+                      € {Number(v).toFixed(2)}
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+        </div>
+
+        {/* Totaalbalk */}
+        <div className="mt-3 flex items-center justify-between rounded-xl bg-gray-900 text-white px-4 py-3">
+          <span className="text-base font-semibold">Totaal</span>
+          <span className="text-lg font-bold tabular-nums">€ {Number(quote.total).toFixed(2)}</span>
+        </div>
+      </div>
+    </div>
+  </section>
+)}
+
 
             <div className="grid sm:grid-cols-2 gap-2 mt-3">
               {ORDER.map((k) => {
