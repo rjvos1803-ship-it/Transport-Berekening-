@@ -9,10 +9,14 @@ const TRAILER_LABELS = {
   tautliner: 'Tautliner',
 }
 
-const BREAKDOWN_NL = {
+const LABELS = {
   base: 'Basistarief',
   linehaul: 'Kilometerkosten',
-  handling: 'Behandelingskosten (aan-/afrijden + laden/lossen)',
+  handling_approach: 'Aanrijden',
+  handling_depart: 'Afrijden',
+  handling_load: 'Laden',
+  handling_unload: 'Lossen',
+  handling_total: 'Totaal behandelingskosten',
   km_levy: 'Kilometerheffing',
   accessorials: 'Bijkosten',
   fuel: 'Brandstoftoeslag',
@@ -25,6 +29,21 @@ const LOAD_OPTIONS = [
   { key: 'half', label: '½ trailer', value: 0.5 },
   { key: 'three_quarter', label: '¾ trailer', value: 0.75 },
   { key: 'full', label: 'Volle trailer', value: 1.0 },
+]
+
+// volgorde waarin we de breakdown tonen
+const ORDER = [
+  'base',
+  'linehaul',
+  'handling_approach',
+  'handling_depart',
+  'handling_load',
+  'handling_unload',
+  'handling_total',
+  'km_levy',
+  'accessorials',
+  'fuel',
+  'zone_flat',
 ]
 
 export default function App() {
@@ -120,9 +139,20 @@ export default function App() {
     })
   }
 
+  // helper: toon uren bij handlingregels
+  const hoursSuffix = (key) => {
+    if (!quote?.derived) return ''
+    const d = quote.derived
+    if (key === 'handling_approach') return ` (${d.approach_hours ?? 0} u)`
+    if (key === 'handling_depart')   return ` (${d.depart_hours ?? 0} u)`
+    if (key === 'handling_load')     return ` (${d.load_hours ?? 0} u)`
+    if (key === 'handling_unload')   return ` (${d.unload_hours ?? 0} u)`
+    if (key === 'handling_total')    return ` (${d.total_hours ?? 0} u @ €${(d.rate_used ?? 0).toFixed(2)}/u)`
+    return ''
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
       <header className="bg-white border-b">
         <div className="max-w-5xl mx-auto px-4 py-4 flex items-center gap-3">
           <img src="/logo.jpg" alt="Logo" className="h-8 w-auto"
@@ -131,10 +161,8 @@ export default function App() {
         </div>
       </header>
 
-      {/* Main */}
       <main className="max-w-5xl mx-auto px-4 py-6">
         <form onSubmit={submit} className="grid gap-4">
-          {/* Rij 1 */}
           <div className="grid md:grid-cols-3 gap-4">
             <div className="bg-white border rounded-xl p-4 shadow-sm">
               <label className="block text-sm font-medium mb-1">
@@ -175,7 +203,6 @@ export default function App() {
             </div>
           </div>
 
-          {/* Rij 2 */}
           <div className="grid md:grid-cols-3 gap-4">
             <div className="bg-white border rounded-xl p-4 shadow-sm">
               <label className="block text-sm font-medium mb-1">Trailertype</label>
@@ -280,18 +307,25 @@ export default function App() {
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-600">Tijd aan-/afrijden + laden/lossen</span>
-                <span className="font-medium">{quote.derived.handling_total_hours} uur</span>
+                <span className="text-gray-600">Uurtarief handling</span>
+                <span className="font-medium">€ {(quote.derived.rate_used ?? 0).toFixed(2)}/u</span>
               </div>
             </div>
 
             <div className="grid sm:grid-cols-2 gap-2 mt-3">
-              {Object.entries(quote.breakdown).map(([k, v]) => (
-                <div key={k} className="flex justify-between text-sm">
-                  <span className="text-gray-600">{BREAKDOWN_NL[k] ?? k}</span>
-                  <span className="font-medium">€ {Number(v).toFixed(2)}</span>
-                </div>
-              ))}
+              {ORDER.map((k) => {
+                if (quote.breakdown[k] == null) return null
+                const label = LABELS[k] ?? k
+                const hours = hoursSuffix(k)
+                return (
+                  <div key={k} className="flex justify-between text-sm">
+                    <span className="text-gray-600">
+                      {label}{hours}
+                    </span>
+                    <span className="font-medium">€ {Number(quote.breakdown[k]).toFixed(2)}</span>
+                  </div>
+                )
+              })}
             </div>
 
             <hr className="my-3" />
