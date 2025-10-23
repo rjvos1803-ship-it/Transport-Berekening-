@@ -6,6 +6,11 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Optioneel: globale stijl tweaks */
+body {
+  @apply bg-gray-50 text-gray-800 font-sans;
+}
+
 /* =============================
    Extra basisstijl (optioneel)
    ============================= */
