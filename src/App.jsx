@@ -214,7 +214,7 @@ export default function App() {
               </label>
               <label className="flex items-center gap-2 mb-1">
                 <input type="checkbox" name="autolaad_kraan" checked={form.autolaad_kraan} onChange={onChange} />
-                <span>Autolaadkraan (+28% op uurtarief)</span>
+                <span>Autolaadkraan</span>
               </label>
               <label className="flex items-center gap-2 mb-1">
                 <input type="checkbox" name="load" checked={form.load} onChange={onChange} />
@@ -226,7 +226,7 @@ export default function App() {
               </label>
               <label className="flex items-center gap-2">
                 <input type="checkbox" name="km_levy" checked={form.km_levy} onChange={onChange} />
-                <span>Kilometerheffing toepassen (€ 0,12/km)</span>
+                <span>Kilometerheffing toepassen</span>
               </label>
             </div>
           </div>
