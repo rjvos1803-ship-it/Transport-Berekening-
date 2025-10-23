@@ -1,7 +1,7 @@
 // src/lib/pdfutil.js
 import jsPDF from "jspdf";
 
-// ---- helpers ---------------------------------------------------------------
+// helpers
 async function blobToDataURL(blob) {
   return await new Promise((resolve) => {
     const reader = new FileReader();
@@ -9,10 +9,9 @@ async function blobToDataURL(blob) {
     reader.readAsDataURL(blob);
   });
 }
-
-async function loadLogoDataURL(logoUrl) {
+async function fetchAsDataURL(url) {
   try {
-    const res = await fetch(logoUrl, { cache: "no-store" });
+    const res = await fetch(url, { cache: "no-store" });
     if (!res.ok) return null;
     const blob = await res.blob();
     return await blobToDataURL(blob);
@@ -20,19 +19,23 @@ async function loadLogoDataURL(logoUrl) {
     return null;
   }
 }
+async function loadLogoDataURL(logoUrl) {
+  const order = [logoUrl, "/logo.svg"];
+  for (const u of order) {
+    if (!u) continue;
+    const d = await fetchAsDataURL(u);
+    if (d) return d;
+  }
+  return null;
+}
 
-// ---- hoofdexport -----------------------------------------------------------
-/**
- * Genereer en download een nette PDF met logo, titel, invoer en berekening.
- * @param {object} quote - payload van /.netlify/functions/quote
- * @param {object} opts  - { reference, logoUrl, company, title }
- */
+// export
 export async function exportQuoteToPDF(quote, opts = {}) {
   const {
     reference = "",
     logoUrl = "/logo.jpg",
     company = "The Coatinc Company",
-    title = "Coatinc Transport berekening",
+    title = "Coatinc Transport berekening"
   } = opts;
 
   const doc = new jsPDF({ unit: "pt", format: "a4" }); // 595 x 842
@@ -41,14 +44,12 @@ export async function exportQuoteToPDF(quote, opts = {}) {
   const right = pageW - 40;
   let y = 40;
 
-  // Header met logo links en titel rechts
+  // header
   const logoData = await loadLogoDataURL(logoUrl);
-  const logoH = 28; // pas aan indien gewenst
+  const logoH = 28;
   if (logoData) {
-    // breedte ~ 3x hoogte om het Coatinc-logo mooi te tonen
     doc.addImage(logoData, "PNG", left, y, logoH * 3, logoH, undefined, "FAST");
   }
-
   doc.setFont("helvetica", "bold");
   doc.setFontSize(14);
   doc.text(title, right, y + 10, { align: "right" });
@@ -57,20 +58,16 @@ export async function exportQuoteToPDF(quote, opts = {}) {
   doc.setFontSize(10);
   const dateStr = new Date().toLocaleString();
   doc.text(`${company} · ${dateStr}`, right, y + 26, { align: "right" });
-
   y += 60;
+
   doc.setDrawColor(220);
   doc.line(left, y, right, y);
   y += 18;
 
-  // Invoerblok
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(12);
-  doc.text("Invoer", left, y);
-  y += 16;
-
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(10);
+  // invoer
+  doc.setFont("helvetica", "bold"); doc.setFontSize(12);
+  doc.text("Invoer", left, y); y += 16;
+  doc.setFont("helvetica", "normal"); doc.setFontSize(10);
 
   const loadPct = quote?.inputs?.options?.load_fraction
     ? `${(quote.inputs.options.load_fraction * 100).toFixed(0)}%`
@@ -88,7 +85,7 @@ export async function exportQuoteToPDF(quote, opts = {}) {
     ["Naar", quote.inputs.to],
     ["Trailer", trailer],
     ["Beladingsgraad", `${loadLabel} (${loadPct})`],
-    ["Afstand", `${quote.derived.distance_km} km`],
+    ["Afstand", `${quote.derived.distance_km} km`]
   ];
 
   const col1W = 140;
@@ -105,15 +102,11 @@ export async function exportQuoteToPDF(quote, opts = {}) {
   doc.line(left, y, right, y);
   y += 18;
 
-  // Kosten / berekening
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(12);
+  // berekening
+  doc.setFont("helvetica", "bold"); doc.setFontSize(12);
   doc.setTextColor(20);
-  doc.text("Berekening", left, y);
-  y += 16;
-
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(10);
+  doc.text("Berekening", left, y); y += 16;
+  doc.setFont("helvetica", "normal"); doc.setFontSize(10);
 
   const LABELS_NL = {
     base: "Basistarief",
@@ -122,25 +115,20 @@ export async function exportQuoteToPDF(quote, opts = {}) {
     km_levy: "Kilometerheffing",
     accessorials: "Bijkosten",
     fuel: "Brandstoftoeslag",
-    zone_flat: "Zonetoeslag",
+    zone_flat: "Zonetoeslag"
   };
 
   const rowsCalc = Object.entries(quote.breakdown || {}).map(([k, v]) => [
     LABELS_NL[k] || k,
-    `€ ${Number(v).toFixed(2)}`,
+    `€ ${Number(v).toFixed(2)}`
   ]);
 
   const valX = right - 120;
   rowsCalc.forEach(([k, v]) => {
-    doc.setTextColor(80);
-    doc.text(k, left, y);
-    doc.setTextColor(20);
-    doc.text(v, valX, y);
+    doc.setTextColor(80); doc.text(k, left, y);
+    doc.setTextColor(20); doc.text(v, valX, y);
     y += 14;
-    if (y > 780) {
-      doc.addPage();
-      y = 40;
-    }
+    if (y > 780) { doc.addPage(); y = 40; }
   });
 
   y += 8;
@@ -148,23 +136,18 @@ export async function exportQuoteToPDF(quote, opts = {}) {
   doc.line(left, y, right, y);
   y += 18;
 
-  // Totaal
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(14);
-  doc.setTextColor(20);
+  // totaal
+  doc.setFont("helvetica", "bold"); doc.setFontSize(14); doc.setTextColor(20);
   doc.text("Totaal", left, y);
   doc.text(`€ ${Number(quote.total).toFixed(2)}`, valX, y);
   y += 20;
 
-  // Voetnoot
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(9);
-  doc.setTextColor(120);
-  const foot =
-    "Aanrij 0,5u + afrij 0,5u. Laden/lossen 1,5u bij volle trailer, naar rato per beladingsgraad. Kilometerheffing optioneel. Brandstoftoeslag op subtotaal. The Coatinc Company · Wij veredelen dromen · www.coatinc.com";
+  // voetnoot
+  doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.setTextColor(120);
+  const foot = "Aanrij 0,5u + afrij 0,5u. Laden/lossen 1,5u bij volle trailer, naar rato per beladingsgraad. Kilometerheffing optioneel. Brandstoftoeslag op subtotaal. The Coatinc Company · www.coatinc.com";
   const split = doc.splitTextToSize(foot, right - left);
   doc.text(split, left, y);
 
-  // Directe download
+  // download
   doc.save("Coatinc-Transport-Berekening.pdf");
 }
