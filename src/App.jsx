@@ -20,7 +20,7 @@ const LABELS = {
   accessorials: 'Bijkosten',
   fuel: 'Brandstoftoeslag',
   zone_flat: 'Zonetoeslag',
-  discount: 'Korting gecombineerd transport'
+  discount: 'Korting gecombineerd transport',
 }
 
 const LOAD_OPTIONS = [
@@ -31,7 +31,7 @@ const LOAD_OPTIONS = [
   { key: 'full', label: 'Volle trailer', value: 1.0 },
 ]
 
-// volgorde zonder "handling_total"
+// volgorde waarin we tonen (zonder handling_total)
 const ORDER = [
   'base',
   'linehaul',
@@ -43,7 +43,7 @@ const ORDER = [
   'accessorials',
   'fuel',
   'zone_flat',
-  'discount'
+  'discount',
 ]
 
 export default function App() {
@@ -52,7 +52,7 @@ export default function App() {
     from: '',
     to: '',
     trailer_type: 'vlakke',
-    load_grade: 'quarter',
+    load_grade: 'half',
     city_delivery: false,
     autolaad_kraan: false,
     combined: false,
@@ -75,7 +75,7 @@ export default function App() {
       from: '',
       to: '',
       trailer_type: 'vlakke',
-      load_grade: 'quarter',
+      load_grade: 'half',
       city_delivery: false,
       autolaad_kraan: false,
       combined: false,
@@ -120,6 +120,7 @@ export default function App() {
       const data = await res.json()
       if (!res.ok) throw new Error(data.detail || data.error || 'Berekening mislukt')
 
+      // labels voor UI
       data.inputs.trailer_type_label =
         TRAILER_LABELS[data.inputs.trailer_type] || data.inputs.trailer_type
       data.inputs.load_label = loadObj.label
@@ -165,7 +166,7 @@ export default function App() {
       <main className="max-w-5xl mx-auto px-4 py-6">
         <form onSubmit={submit} className="grid gap-4">
           <div className="grid md:grid-cols-3 gap-4">
-            <div className="bg-white border rounded-xl p-4 shadow-sm">
+            <div className="bg-white border rounded-2xl p-4 shadow-sm">
               <label className="block text-sm font-medium mb-1">
                 Referentie <span className="text-red-600">*</span>
               </label>
@@ -179,7 +180,7 @@ export default function App() {
               />
             </div>
 
-            <div className="bg-white border rounded-xl p-4 shadow-sm">
+            <div className="bg-white border rounded-2xl p-4 shadow-sm">
               <label className="block text-sm font-medium mb-1">Van (adres / postcode)</label>
               <input
                 name="from"
@@ -191,7 +192,7 @@ export default function App() {
               />
             </div>
 
-            <div className="bg-white border rounded-xl p-4 shadow-sm">
+            <div className="bg-white border rounded-2xl p-4 shadow-sm">
               <label className="block text-sm font-medium mb-1">Naar (adres / postcode)</label>
               <input
                 name="to"
@@ -205,7 +206,7 @@ export default function App() {
           </div>
 
           <div className="grid md:grid-cols-3 gap-4">
-            <div className="bg-white border rounded-xl p-4 shadow-sm">
+            <div className="bg-white border rounded-2xl p-4 shadow-sm">
               <label className="block text-sm font-medium mb-1">Trailertype</label>
               <select
                 name="trailer_type"
@@ -220,7 +221,7 @@ export default function App() {
               </select>
             </div>
 
-            <div className="bg-white border rounded-xl p-4 shadow-sm">
+            <div className="bg-white border rounded-2xl p-4 shadow-sm">
               <label className="block text-sm font-medium mb-1">Beladingsgraad</label>
               <select
                 name="load_grade"
@@ -234,7 +235,7 @@ export default function App() {
               </select>
             </div>
 
-            <div className="bg-white border rounded-xl p-4 shadow-sm">
+            <div className="bg-white border rounded-2xl p-4 shadow-sm">
               <span className="block text-sm font-medium mb-2">Opties</span>
               <label className="flex items-center gap-2 mb-1">
                 <input type="checkbox" name="city_delivery" checked={form.city_delivery} onChange={onChange} />
@@ -246,7 +247,7 @@ export default function App() {
               </label>
               <label className="flex items-center gap-2 mb-1">
                 <input type="checkbox" name="combined" checked={form.combined} onChange={onChange} />
-                <span>Gecombineerd transport</span>
+                <span>Gecombineerd transport (20% korting)</span>
               </label>
               <label className="flex items-center gap-2 mb-1">
                 <input type="checkbox" name="load" checked={form.load} onChange={onChange} />
@@ -263,162 +264,104 @@ export default function App() {
             </div>
           </div>
 
-          {error && (
-            <div className="bg-red-50 text-red-800 border border-red-200 rounded-xl p-3">
-              {error}
-            </div>
-          )}
-
-          <div className="flex flex-wrap gap-3">
-            <button type="submit" disabled={loading}
-              className="inline-flex items-center gap-2 bg-black text-white px-4 py-2 rounded-lg disabled:opacity-60">
-              {loading ? 'Berekenen…' : 'Bereken tarief'}
-            </button>
-            <button type="button" onClick={clearAll}
-              className="inline-flex items-center gap-2 bg-gray-700 text-white px-4 py-2 rounded-lg">
-              Leegmaken
-            </button>
-            <button type="button" onClick={downloadPDF} disabled={!quote}
-              className="inline-flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-lg disabled:opacity-60">
-              Download PDF
-            </button>
+        {error && (
+          <div className="bg-red-50 text-red-800 border border-red-200 rounded-2xl p-3">
+            {error}
           </div>
+        )}
+
+        <div className="flex flex-wrap gap-3">
+          <button type="submit" disabled={loading}
+            className="inline-flex items-center gap-2 bg-black text-white px-4 py-2 rounded-lg disabled:opacity-60">
+            {loading ? 'Berekenen…' : 'Bereken tarief'}
+          </button>
+          <button type="button" onClick={clearAll}
+            className="inline-flex items-center gap-2 bg-gray-700 text-white px-4 py-2 rounded-lg">
+            Leegmaken
+          </button>
+          <button type="button" onClick={downloadPDF} disabled={!quote}
+            className="inline-flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-lg disabled:opacity-60">
+            Download PDF
+          </button>
+        </div>
         </form>
 
+        {/* RESULTAAT */}
         {quote && (
-  <section className="mt-6">
-    <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+          <section className="mt-6">
+            <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
 
-      {/* Header: 3 compacte stats */}
-      <div className="grid sm:grid-cols-3 gap-0 divide-y sm:divide-y-0 sm:divide-x divide-gray-200 bg-gray-50/60">
-        <div className="p-4">
-          <div className="text-xs uppercase tracking-wider text-gray-500">Afstand</div>
-          <div className="mt-1 text-lg font-semibold">{quote.derived.distance_km} km</div>
-        </div>
-        <div className="p-4">
-          <div className="text-xs uppercase tracking-wider text-gray-500">Beladingsgraad</div>
-          <div className="mt-1 text-lg font-semibold">
-            {quote.inputs?.options?.load_fraction
-              ? `${(quote.inputs.options.load_fraction * 100).toFixed(0)}%`
-              : '—'}
-            {quote.inputs?.load_label ? (
-              <span className="ml-2 text-sm font-normal text-gray-500">
-                ({quote.inputs.load_label})
-              </span>
-            ) : null}
-          </div>
-        </div>
-        <div className="p-4">
-          <div className="text-xs uppercase tracking-wider text-gray-500">Uurtarief handling</div>
-          <div className="mt-1 text-lg font-semibold">
-            € {(quote.derived.rate_used ?? 0).toFixed(2)}
-            <span className="text-sm font-normal text-gray-500"> /u</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Breakdown als "tabel" */}
-      <div className="p-4">
-        <div className="text-sm font-semibold mb-2">Resultaat</div>
-
-        <div className="rounded-xl border border-gray-200 overflow-hidden">
-          <div className="divide-y divide-gray-200">
-            {[
-              'base',
-              'linehaul',
-              'handling_approach',
-              'handling_depart',
-              'handling_load',
-              'handling_unload',
-              'km_levy',
-              'accessorials',
-              'fuel',
-              'zone_flat',
-              'discount',
-            ]
-              .map((k) => {
-                const v = quote.breakdown?.[k];
-                if (v == null || Math.abs(Number(v)) < 0.005) return null;
-
-                const labels = {
-                  base: 'Basistarief',
-                  linehaul: 'Kilometerkosten',
-                  handling_approach: 'Aanrijden',
-                  handling_depart: 'Afrijden',
-                  handling_load: 'Laden',
-                  handling_unload: 'Lossen',
-                  km_levy: 'Kilometerheffing',
-                  accessorials: 'Bijkosten',
-                  fuel: 'Brandstoftoeslag',
-                  zone_flat: 'Zonetoeslag',
-                  discount: 'Korting gecombineerd transport',
-                };
-
-                const hours = (() => {
-                  const d = quote.derived || {};
-                  if (k === 'handling_approach') return ` (${(d.approach_hours ?? 0)} u)`;
-                  if (k === 'handling_depart') return ` (${(d.depart_hours ?? 0)} u)`;
-                  if (k === 'handling_load') return ` (${(d.load_hours ?? 0)} u)`;
-                  if (k === 'handling_unload') return ` (${(d.unload_hours ?? 0)} u)`;
-                  return '';
-                })();
-
-                const isDiscount = k === 'discount' && Number(v) < 0;
-
-                return (
-                  <div
-                    key={k}
-                    className="grid grid-cols-[1fr_auto] items-center px-4 py-2 bg-white"
-                  >
-                    <div className="text-sm text-gray-600">
-                      {labels[k] ?? k}
-                      <span className="text-gray-400">{hours}</span>
-                    </div>
-                    <div className={`text-sm font-medium tabular-nums ${isDiscount ? 'text-emerald-600' : ''}`}>
-                      € {Number(v).toFixed(2)}
-                    </div>
+              {/* Stats */}
+              <div className="grid sm:grid-cols-3 gap-0 divide-y sm:divide-y-0 sm:divide-x divide-gray-200 bg-gray-50/60">
+                <div className="p-4">
+                  <div className="text-xs uppercase tracking-wider text-gray-500">Afstand</div>
+                  <div className="mt-1 text-lg font-semibold">{quote.derived.distance_km} km</div>
+                </div>
+                <div className="p-4">
+                  <div className="text-xs uppercase tracking-wider text-gray-500">Beladingsgraad</div>
+                  <div className="mt-1 text-lg font-semibold">
+                    {quote.inputs?.options?.load_fraction
+                      ? `${(quote.inputs.options.load_fraction * 100).toFixed(0)}%`
+                      : '—'}
+                    {quote.inputs?.load_label ? (
+                      <span className="ml-2 text-sm font-normal text-gray-500">
+                        ({quote.inputs.load_label})
+                      </span>
+                    ) : null}
                   </div>
-                );
-              })}
-          </div>
-        </div>
-
-        {/* Totaalbalk */}
-        <div className="mt-3 flex items-center justify-between rounded-xl bg-gray-900 text-white px-4 py-3">
-          <span className="text-base font-semibold">Totaal</span>
-          <span className="text-lg font-bold tabular-nums">€ {Number(quote.total).toFixed(2)}</span>
-        </div>
-      </div>
-    </div>
-  </section>
-)}
-
-
-            <div className="grid sm:grid-cols-2 gap-2 mt-3">
-              {ORDER.map((k) => {
-                const v = quote.breakdown?.[k];
-                if (v == null || Math.abs(Number(v)) < 0.005) return null; // skip 0
-                const label = LABELS[k] ?? k;
-                const hours = ['handling_approach','handling_depart','handling_load','handling_unload'].includes(k) ? 
-                  (k==='handling_approach' ? ` (${quote.derived.approach_hours} u)` :
-                   k==='handling_depart'   ? ` (${quote.derived.depart_hours} u)` :
-                   k==='handling_load'     ? ` (${quote.derived.load_hours} u)` :
-                                             ` (${quote.derived.unload_hours} u)`) : '';
-                return (
-                  <div key={k} className="flex justify-between text-sm">
-                    <span className="text-gray-600">{label}{hours}</span>
-                    <span className="font-medium">€ {Number(v).toFixed(2)}</span>
+                </div>
+                <div className="p-4">
+                  <div className="text-xs uppercase tracking-wider text-gray-500">Uurtarief handling</div>
+                  <div className="mt-1 text-lg font-semibold">
+                    € {(quote.derived.rate_used ?? 0).toFixed(2)}
+                    <span className="text-sm font-normal text-gray-500"> /u</span>
                   </div>
-                )
-              })}
-            </div>
+                </div>
+              </div>
 
-            <hr className="my-3" />
-            <div className="text-lg">
-              <span className="font-semibold">Totaal: </span>
-              <span className="font-bold">€ {Number(quote.total).toFixed(2)}</span>
+              {/* Breakdown als tabel */}
+              <div className="p-4">
+                <div className="text-sm font-semibold mb-2">Resultaat</div>
+
+                <div className="rounded-xl border border-gray-200 overflow-hidden">
+                  <div className="divide-y divide-gray-200">
+                    {ORDER.map((k) => {
+                      const v = quote.breakdown?.[k]
+                      if (v == null || Math.abs(Number(v)) < 0.005) return null
+
+                      const hours = (() => {
+                        const d = quote.derived || {}
+                        if (k === 'handling_approach') return ` (${(d.approach_hours ?? 0)} u)`
+                        if (k === 'handling_depart')   return ` (${(d.depart_hours ?? 0)} u)`
+                        if (k === 'handling_load')     return ` (${(d.load_hours ?? 0)} u)`
+                        if (k === 'handling_unload')   return ` (${(d.unload_hours ?? 0)} u)`
+                        return ''
+                      })()
+
+                      const isDiscount = k === 'discount' && Number(v) < 0
+
+                      return (
+                        <div key={k} className="grid grid-cols-[1fr_auto] items-center px-4 py-2 bg-white">
+                          <div className="text-sm text-gray-600">
+                            {LABELS[k] ?? k}
+                            <span className="text-gray-400">{hours}</span>
+                          </div>
+                          <div className={`text-sm font-medium tabular-nums ${isDiscount ? 'text-emerald-600' : ''}`}>
+                            € {Number(v).toFixed(2)}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                <div className="mt-3 flex items-center justify-between rounded-xl bg-gray-900 text-white px-4 py-3">
+                  <span className="text-base font-semibold">Totaal</span>
+                  <span className="text-lg font-bold tabular-nums">€ {Number(quote.total).toFixed(2)}</span>
+                </div>
+              </div>
             </div>
-          </div>
+          </section>
         )}
       </main>
     </div>
