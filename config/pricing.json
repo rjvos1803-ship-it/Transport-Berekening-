@@ -12,7 +12,7 @@
 
   "km_levy": { "eur_per_km": 0.12 },
 
-  "auto_crane": { "handling_rate_multiplier": 1.28 },
+  "auto_crane": { "handling_rate_multiplier": 1.35 },
 
   "combined_discount_pct": 0.20,
 
