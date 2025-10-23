@@ -247,7 +247,7 @@ export default function App() {
               </label>
               <label className="flex items-center gap-2 mb-1">
                 <input type="checkbox" name="combined" checked={form.combined} onChange={onChange} />
-                <span>Gecombineerd transport (20% korting)</span>
+                <span>Gecombineerd transport</span>
               </label>
               <label className="flex items-center gap-2 mb-1">
                 <input type="checkbox" name="load" checked={form.load} onChange={onChange} />
