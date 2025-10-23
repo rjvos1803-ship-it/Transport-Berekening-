@@ -46,7 +46,7 @@ export async function exportQuoteToPDF(quote, opts = {}) {
 
   // header
   const logoData = await loadLogoDataURL(logoUrl);
-  const logoH = 28;
+  const logoH = 36;
   if (logoData) {
     doc.addImage(logoData, "PNG", left, y, logoH * 3, logoH, undefined, "FAST");
   }
