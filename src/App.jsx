@@ -1,3 +1,4 @@
+// src/App.jsx
 import { useState } from 'react'
 import { exportQuoteToPDF } from './lib/pdfutil.js'
 
@@ -91,7 +92,7 @@ export default function App() {
         }),
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Mislukt')
+      if (!res.ok) throw new Error(data.detail || data.error || 'Berekening mislukt')
       data.inputs.trailer_type_label =
         TRAILER_LABELS[data.inputs.trailer_type] || data.inputs.trailer_type
       data.inputs.load_label = loadObj.label
@@ -107,26 +108,32 @@ export default function App() {
     if (!quote) return
     await exportQuoteToPDF(quote, {
       reference: form.reference,
-      logoUrl: '/logo.png', // zet je logo in /public/logo.png
-      company: 'Coatinc',
+      logoUrl: '/logo.jpg',             // staat in /public/logo.jpg
+      company: 'The Coatinc Company',
       title: 'Coatinc Transport berekening'
     })
   }
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Header */}
       <header className="bg-white border-b">
         <div className="max-w-5xl mx-auto px-4 py-4 flex items-center gap-3">
-          <img src="/logo.png" alt="Logo" className="h-8 w-auto" onError={(e)=>{e.currentTarget.style.display='none'}}/>
+          <img src="/logo.jpg" alt="Logo" className="h-8 w-auto"
+               onError={(e)=>{e.currentTarget.style.display='none'}} />
           <h1 className="text-xl font-semibold">Transporttarief berekening</h1>
         </div>
       </header>
 
+      {/* Main */}
       <main className="max-w-5xl mx-auto px-4 py-6">
         <form onSubmit={submit} className="grid gap-4">
+          {/* Rij 1: referentie / van / naar */}
           <div className="grid md:grid-cols-3 gap-4">
             <div className="bg-white border rounded-xl p-4 shadow-sm">
-              <label className="block text-sm font-medium mb-1">Referentie <span className="text-red-600">*</span></label>
+              <label className="block text-sm font-medium mb-1">
+                Referentie <span className="text-red-600">*</span>
+              </label>
               <input
                 name="reference"
                 value={form.reference}
@@ -162,6 +169,7 @@ export default function App() {
             </div>
           </div>
 
+          {/* Rij 2: trailer / beladingsgraad / opties */}
           <div className="grid md:grid-cols-3 gap-4">
             <div className="bg-white border rounded-xl p-4 shadow-sm">
               <label className="block text-sm font-medium mb-1">Trailertype</label>
@@ -212,12 +220,14 @@ export default function App() {
             </div>
           </div>
 
+          {/* Foutmelding */}
           {error && (
             <div className="bg-red-50 text-red-800 border border-red-200 rounded-xl p-3">
               {error}
             </div>
           )}
 
+          {/* Acties */}
           <div className="flex flex-wrap gap-3">
             <button
               type="submit"
@@ -244,6 +254,7 @@ export default function App() {
           </div>
         </form>
 
+        {/* Resultaatkaart */}
         {quote && (
           <div className="mt-6 bg-white border rounded-xl shadow-sm p-4">
             <h2 className="font-semibold mb-3">Resultaat</h2>
