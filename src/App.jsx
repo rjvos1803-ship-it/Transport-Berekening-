@@ -27,6 +27,7 @@ const LOAD_OPTIONS = [
 
 export default function App() {
   const [form, setForm] = useState({
+    reference: '',
     from: '',
     to: '',
     trailer_type: 'tautliner',
@@ -47,6 +48,7 @@ export default function App() {
 
   const clearAll = () => {
     setForm({
+      reference: '',
       from: '',
       to: '',
       trailer_type: 'tautliner',
@@ -62,6 +64,10 @@ export default function App() {
 
   const submit = async (e) => {
     e.preventDefault()
+    if (!form.reference.trim()) {
+      setError('Vul een referentie in.')
+      return
+    }
     setLoading(true)
     setError('')
     setQuote(null)
@@ -97,85 +103,186 @@ export default function App() {
     }
   }
 
-  const exportPDF = async () => { if (quote) await exportQuoteToPDF(quote) }
+  const downloadPDF = async () => {
+    if (!quote) return
+    await exportQuoteToPDF(quote, {
+      reference: form.reference,
+      logoUrl: '/logo.png', // zet je logo in /public/logo.png
+      company: 'Coatinc',
+      title: 'Coatinc Transport berekening'
+    })
+  }
 
   return (
-    <div style={{ minHeight: '100vh', padding: '24px', maxWidth: '900px', margin: '0 auto', fontFamily: 'system-ui, sans-serif' }}>
-      <h1 style={{ fontSize: '24px', fontWeight: '700', marginBottom: '12px' }}>Transporttarief berekening</h1>
-
-      <form onSubmit={submit} style={{ display: 'grid', gap: '12px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-          <input name="from" placeholder="Van (adres/postcode)" value={form.from} onChange={onChange} required style={{ padding: '10px', border: '1px solid #ccc', borderRadius: '8px' }} />
-          <input name="to" placeholder="Naar (adres/postcode)" value={form.to} onChange={onChange} required style={{ padding: '10px', border: '1px solid #ccc', borderRadius: '8px' }} />
+    <div className="min-h-screen bg-gray-50">
+      <header className="bg-white border-b">
+        <div className="max-w-5xl mx-auto px-4 py-4 flex items-center gap-3">
+          <img src="/logo.png" alt="Logo" className="h-8 w-auto" onError={(e)=>{e.currentTarget.style.display='none'}}/>
+          <h1 className="text-xl font-semibold">Transporttarief berekening</h1>
         </div>
+      </header>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
-          <select name="trailer_type" value={form.trailer_type} onChange={onChange} style={{ padding: '10px', border: '1px solid #ccc', borderRadius: '8px' }}>
-            <option value="tautliner">Tautliner</option>
-            <option value="mega">Open oplegger</option>
-            <option value="koel">Dieplader</option>
-          </select>
+      <main className="max-w-5xl mx-auto px-4 py-6">
+        <form onSubmit={submit} className="grid gap-4">
+          <div className="grid md:grid-cols-3 gap-4">
+            <div className="bg-white border rounded-xl p-4 shadow-sm">
+              <label className="block text-sm font-medium mb-1">Referentie <span className="text-red-600">*</span></label>
+              <input
+                name="reference"
+                value={form.reference}
+                onChange={onChange}
+                required
+                placeholder="Bijv. ORD-2025-001"
+                className="w-full rounded-lg border px-3 py-2 outline-none focus:ring-2 focus:ring-black/20"
+              />
+            </div>
 
-          <select name="load_grade" value={form.load_grade} onChange={onChange} style={{ padding: '10px', border: '1px solid #ccc', borderRadius: '8px' }}>
-            {LOAD_OPTIONS.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
-          </select>
+            <div className="bg-white border rounded-xl p-4 shadow-sm">
+              <label className="block text-sm font-medium mb-1">Van (adres / postcode)</label>
+              <input
+                name="from"
+                value={form.from}
+                onChange={onChange}
+                required
+                placeholder="Bijv. Harderwijkerweg 31 3888LP"
+                className="w-full rounded-lg border px-3 py-2 outline-none focus:ring-2 focus:ring-black/20"
+              />
+            </div>
 
-          <div />
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '8px', alignItems: 'center' }}>
-          <label style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-            <input type="checkbox" name="city_delivery" checked={form.city_delivery} onChange={onChange} /> Binnenstad
-          </label>
-          <label style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-            <input type="checkbox" name="load" checked={form.load} onChange={onChange} /> Laden
-          </label>
-          <label style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-            <input type="checkbox" name="unload" checked={form.unload} onChange={onChange} /> Lossen
-          </label>
-          <label style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-            <input type="checkbox" name="km_levy" checked={form.km_levy} onChange={onChange} /> Kilometerheffing toepassen (€ 0,12/km)
-          </label>
-        </div>
-
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          <button type="submit" disabled={loading} style={{ background: '#000', color: '#fff', padding: '10px 16px', borderRadius: '8px', border: 'none', cursor: 'pointer' }}>
-            {loading ? 'Berekenen…' : 'Bereken tarief'}
-          </button>
-          <button type="button" onClick={clearAll} style={{ background: '#666', color: '#fff', padding: '10px 16px', borderRadius: '8px', border: 'none', cursor: 'pointer' }}>
-            Leegmaken
-          </button>
-          <button type="button" onClick={exportPDF} disabled={!quote} style={{ background: '#0b5', color: '#fff', padding: '10px 16px', border: 'none', borderRadius: '8px', cursor: !quote ? 'not-allowed' : 'pointer' }}>
-            Exporteer naar PDF
-          </button>
-        </div>
-      </form>
-
-      {error && <p style={{ color: '#b00020', marginTop: '12px' }}>Fout: {error}</p>}
-
-      {quote && (
-        <div style={{ marginTop: '16px', border: '1px solid #e5e5e5', borderRadius: '12px', padding: '16px' }}>
-          <h2 style={{ fontWeight: 600, marginBottom: '8px' }}>Resultaat</h2>
-          <p><strong>Afstand:</strong> {quote.derived.distance_km} km</p>
-          <p><strong>Beladingsgraad:</strong> {quote.inputs?.options?.load_fraction ? `${(quote.inputs.options.load_fraction*100).toFixed(0)}%` : '—'} ({quote.inputs?.load_label || '—'})</p>
-          <p><strong>Tijd aan-/afrijden + laden/lossen:</strong> {quote.derived.handling_total_hours} uur</p>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', columnGap: '24px', rowGap: '4px', marginTop: '8px' }}>
-            {Object.entries(quote.breakdown).map(([k, v]) => {
-              const label = BREAKDOWN_NL[k] ?? k
-              return (
-                <div key={k} style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span>{label}</span><span>€ {Number(v).toFixed(2)}</span>
-                </div>
-              )
-            })}
+            <div className="bg-white border rounded-xl p-4 shadow-sm">
+              <label className="block text-sm font-medium mb-1">Naar (adres / postcode)</label>
+              <input
+                name="to"
+                value={form.to}
+                onChange={onChange}
+                required
+                placeholder="Bijv. Edisonweg 5 2952AD"
+                className="w-full rounded-lg border px-3 py-2 outline-none focus:ring-2 focus:ring-black/20"
+              />
+            </div>
           </div>
-          <hr style={{ margin: '12px 0' }} />
-          <p style={{ fontSize: '20px' }}><strong>Totaal:</strong> € {Number(quote.total).toFixed(2)}</p>
-        </div>
-      )}
+
+          <div className="grid md:grid-cols-3 gap-4">
+            <div className="bg-white border rounded-xl p-4 shadow-sm">
+              <label className="block text-sm font-medium mb-1">Trailertype</label>
+              <select
+                name="trailer_type"
+                value={form.trailer_type}
+                onChange={onChange}
+                className="w-full rounded-lg border px-3 py-2 outline-none focus:ring-2 focus:ring-black/20"
+              >
+                <option value="tautliner">Tautliner</option>
+                <option value="mega">Open oplegger</option>
+                <option value="koel">Dieplader</option>
+              </select>
+            </div>
+
+            <div className="bg-white border rounded-xl p-4 shadow-sm">
+              <label className="block text-sm font-medium mb-1">Beladingsgraad</label>
+              <select
+                name="load_grade"
+                value={form.load_grade}
+                onChange={onChange}
+                className="w-full rounded-lg border px-3 py-2 outline-none focus:ring-2 focus:ring-black/20"
+              >
+                {LOAD_OPTIONS.map(o => (
+                  <option key={o.key} value={o.key}>{o.label}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="bg-white border rounded-xl p-4 shadow-sm">
+              <span className="block text-sm font-medium mb-2">Opties</span>
+              <label className="flex items-center gap-2 mb-1">
+                <input type="checkbox" name="city_delivery" checked={form.city_delivery} onChange={onChange} />
+                <span>Binnenstad</span>
+              </label>
+              <label className="flex items-center gap-2 mb-1">
+                <input type="checkbox" name="load" checked={form.load} onChange={onChange} />
+                <span>Laden</span>
+              </label>
+              <label className="flex items-center gap-2 mb-1">
+                <input type="checkbox" name="unload" checked={form.unload} onChange={onChange} />
+                <span>Lossen</span>
+              </label>
+              <label className="flex items-center gap-2">
+                <input type="checkbox" name="km_levy" checked={form.km_levy} onChange={onChange} />
+                <span>Kilometerheffing toepassen (€ 0,12/km)</span>
+              </label>
+            </div>
+          </div>
+
+          {error && (
+            <div className="bg-red-50 text-red-800 border border-red-200 rounded-xl p-3">
+              {error}
+            </div>
+          )}
+
+          <div className="flex flex-wrap gap-3">
+            <button
+              type="submit"
+              disabled={loading}
+              className="inline-flex items-center gap-2 bg-black text-white px-4 py-2 rounded-lg disabled:opacity-60"
+            >
+              {loading ? 'Berekenen…' : 'Bereken tarief'}
+            </button>
+            <button
+              type="button"
+              onClick={clearAll}
+              className="inline-flex items-center gap-2 bg-gray-700 text-white px-4 py-2 rounded-lg"
+            >
+              Leegmaken
+            </button>
+            <button
+              type="button"
+              onClick={downloadPDF}
+              disabled={!quote}
+              className="inline-flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-lg disabled:opacity-60"
+            >
+              Download PDF
+            </button>
+          </div>
+        </form>
+
+        {quote && (
+          <div className="mt-6 bg-white border rounded-xl shadow-sm p-4">
+            <h2 className="font-semibold mb-3">Resultaat</h2>
+
+            <div className="grid sm:grid-cols-2 gap-y-1 gap-x-8 text-sm">
+              <div className="flex justify-between">
+                <span className="text-gray-600">Afstand</span>
+                <span className="font-medium">{quote.derived.distance_km} km</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Beladingsgraad</span>
+                <span className="font-medium">
+                  {quote.inputs?.options?.load_fraction ? `${(quote.inputs.options.load_fraction*100).toFixed(0)}%` : '—'}
+                  {quote.inputs?.load_label ? ` (${quote.inputs.load_label})` : ''}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Tijd aan-/afrijden + laden/lossen</span>
+                <span className="font-medium">{quote.derived.handling_total_hours} uur</span>
+              </div>
+            </div>
+
+            <div className="grid sm:grid-cols-2 gap-2 mt-3">
+              {Object.entries(quote.breakdown).map(([k, v]) => (
+                <div key={k} className="flex justify-between text-sm">
+                  <span className="text-gray-600">{BREAKDOWN_NL[k] ?? k}</span>
+                  <span className="font-medium">€ {Number(v).toFixed(2)}</span>
+                </div>
+              ))}
+            </div>
+
+            <hr className="my-3" />
+            <div className="text-lg">
+              <span className="font-semibold">Totaal: </span>
+              <span className="font-bold">€ {Number(quote.total).toFixed(2)}</span>
+            </div>
+          </div>
+        )}
+      </main>
     </div>
   )
 }
-
-
