@@ -1,153 +1,156 @@
 // src/lib/pdfutil.js
-import jsPDF from "jspdf";
+// PDF met secties die alleen verschijnen als er zichtbare (≠0) regels zijn.
+// Toont korting en verbergt alle €0,00-regels.
 
-// helpers
-async function blobToDataURL(blob) {
-  return await new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.readAsDataURL(blob);
-  });
+function eur(n) {
+  return `€ ${Number(n ?? 0).toFixed(2)}`;
 }
-async function fetchAsDataURL(url) {
+function line(doc, x1, y1, x2, y2, gray = 0.85) {
+  doc.setDrawColor(gray * 255);
+  doc.line(x1, y1, x2, y2);
+}
+function addLabelValue(doc, label, value, x, y, labelW = 60) {
+  doc.setFont("helvetica", "normal"); doc.setFontSize(10); doc.text(label, x, y);
+  doc.setFont("helvetica", "bold");   doc.text(String(value ?? ""), x + labelW, y);
+}
+async function loadImageAsDataURL(url) {
   try {
-    const res = await fetch(url, { cache: "no-store" });
-    if (!res.ok) return null;
-    const blob = await res.blob();
-    return await blobToDataURL(blob);
-  } catch {
-    return null;
-  }
-}
-async function loadLogoDataURL(logoUrl) {
-  const order = [logoUrl, "/logo.svg"];
-  for (const u of order) {
-    if (!u) continue;
-    const d = await fetchAsDataURL(u);
-    if (d) return d;
-  }
-  return null;
+    const res = await fetch(url); const blob = await res.blob();
+    return await new Promise((resolve) => { const r = new FileReader(); r.onload = () => resolve(r.result); r.readAsDataURL(blob); });
+  } catch { return null; }
 }
 
-// export
-export async function exportQuoteToPDF(quote, opts = {}) {
+export async function exportQuoteToPDF(quote, meta = {}) {
+  const { default: jspdfNS } = await import('jspdf');
+  const jsPDF = jspdfNS.jsPDF || jspdfNS;
+
+  const doc = new jsPDF({ unit: "mm", format: "a4", compress: true });
+
   const {
     reference = "",
     logoUrl = "/logo.jpg",
     company = "The Coatinc Company",
     title = "Coatinc Transport berekening"
-  } = opts;
+  } = meta;
 
-  const doc = new jsPDF({ unit: "pt", format: "a4" }); // 595 x 842
-  const pageW = doc.internal.pageSize.getWidth();
-  const left = 40;
-  const right = pageW - 40;
-  let y = 40;
+  const margin = 15;
+  let y = margin;
 
-  // header
-  const logoData = await loadLogoDataURL(logoUrl);
-  const logoH = 36;
-  if (logoData) {
-    doc.addImage(logoData, "PNG", left, y, logoH * 3, logoH, undefined, "FAST");
+  // Header
+  if (logoUrl) {
+    const dataURL = await loadImageAsDataURL(logoUrl);
+    if (dataURL) doc.addImage(dataURL, "JPEG", margin, y - 2, 30, 0);
   }
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(14);
-  doc.text(title, right, y + 10, { align: "right" });
+  doc.setFont("helvetica", "bold"); doc.setFontSize(16); doc.text(title, margin + 35, y + 2);
+  doc.setFontSize(10); doc.setFont("helvetica", "normal"); doc.text(company, margin + 35, y + 8);
+  y += 14; line(doc, margin, y, 210 - margin, y); y += 6;
 
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(10);
-  const dateStr = new Date().toLocaleString();
-  doc.text(`${company} · ${dateStr}`, right, y + 26, { align: "right" });
-  y += 60;
+  // Meta
+  addLabelValue(doc, "Referentie:", reference || "-", margin, y);
+  addLabelValue(doc, "Datum:", new Date().toLocaleDateString("nl-NL"), 120, y); y += 8;
 
-  doc.setDrawColor(220);
-  doc.line(left, y, right, y);
-  y += 18;
-
-  // invoer
-  doc.setFont("helvetica", "bold"); doc.setFontSize(12);
-  doc.text("Invoer", left, y); y += 16;
+  // Invoer
+  doc.setFont("helvetica", "bold"); doc.setFontSize(12); doc.text("Invoer", margin, y); y += 5;
   doc.setFont("helvetica", "normal"); doc.setFontSize(10);
+  const tLabel = quote?.inputs?.trailer_type_label || quote?.inputs?.trailer_type || "-";
+  const loadLabel = quote?.inputs?.load_label || "-";
+  addLabelValue(doc, "Van:", quote?.inputs?.from || "-", margin, y);
+  addLabelValue(doc, "Naar:", quote?.inputs?.to || "-", 120, y); y += 6;
+  addLabelValue(doc, "Trailertype:", tLabel, margin, y);
+  addLabelValue(doc, "Beladingsgraad:", loadLabel, 120, y); y += 6;
 
-  const loadPct = quote?.inputs?.options?.load_fraction
-    ? `${(quote.inputs.options.load_fraction * 100).toFixed(0)}%`
-    : "—";
-  const loadLabel =
-    quote?.inputs?.load_label ||
-    quote?.inputs?.options?.load_grade ||
-    "—";
-  const trailer =
-    quote?.inputs?.trailer_type_label || quote?.inputs?.trailer_type || "—";
+  const opt = quote?.inputs?.options || {};
+  const optsTxt = [
+    opt.city_delivery ? "Binnenstad" : null,
+    opt.autolaad_kraan ? "Autolaadkraan" : null,
+    opt.combined ? "Gecombineerd transport (20% korting)" : null,
+    opt.load ? "Laden" : null,
+    opt.unload ? "Lossen" : null,
+    opt.km_levy ? "Kilometerheffing" : null
+  ].filter(Boolean).join(", ") || "-";
+  addLabelValue(doc, "Opties:", optsTxt, margin, y); y += 8;
 
-  const rowsIn = [
-    ["Referentie", reference || "—"],
-    ["Van", quote.inputs.from],
-    ["Naar", quote.inputs.to],
-    ["Trailer", trailer],
-    ["Beladingsgraad", `${loadLabel} (${loadPct})`],
-    ["Afstand", `${quote.derived.distance_km} km`]
-  ];
-
-  const col1W = 140;
-  rowsIn.forEach(([k, v]) => {
-    doc.setTextColor(100);
-    doc.text(k, left, y);
-    doc.setTextColor(20);
-    doc.text(String(v), left + col1W, y);
-    y += 14;
-  });
-
-  y += 10;
-  doc.setDrawColor(240);
-  doc.line(left, y, right, y);
-  y += 18;
-
-  // berekening
-  doc.setFont("helvetica", "bold"); doc.setFontSize(12);
-  doc.setTextColor(20);
-  doc.text("Berekening", left, y); y += 16;
+  // Resultaat
+  doc.setFont("helvetica", "bold"); doc.setFontSize(12); doc.text("Resultaat", margin, y); y += 5;
   doc.setFont("helvetica", "normal"); doc.setFontSize(10);
+  addLabelValue(doc, "Afstand:", `${quote?.derived?.distance_km ?? 0} km`, margin, y);
+  addLabelValue(doc, "Uurtarief handling:", `${eur(quote?.derived?.rate_used ?? 0)}/u`, 120, y); y += 8;
 
-  const LABELS_NL = {
+  // Labels en uren-suffix
+  const labels = {
     base: "Basistarief",
     linehaul: "Kilometerkosten",
-    handling: "Behandelingskosten (aan-/afrijden + laden/lossen)",
+    handling_approach: "Aanrijden",
+    handling_depart: "Afrijden",
+    handling_load: "Laden",
+    handling_unload: "Lossen",
     km_levy: "Kilometerheffing",
     accessorials: "Bijkosten",
     fuel: "Brandstoftoeslag",
-    zone_flat: "Zonetoeslag"
+    zone_flat: "Zonetoeslag",
+    discount: "Korting gecombineerd transport"
+  };
+  const hoursSuffix = (k) => {
+    const d = quote?.derived || {};
+    if (k === "handling_approach") return ` (${(d.approach_hours ?? 0).toFixed(2)} u)`;
+    if (k === "handling_depart")   return ` (${(d.depart_hours ?? 0).toFixed(2)} u)`;
+    if (k === "handling_load")     return ` (${(d.load_hours ?? 0).toFixed(2)} u)`;
+    if (k === "handling_unload")   return ` (${(d.unload_hours ?? 0).toFixed(2)} u)`;
+    return "";
   };
 
-  const rowsCalc = Object.entries(quote.breakdown || {}).map(([k, v]) => [
-    LABELS_NL[k] || k,
-    `€ ${Number(v).toFixed(2)}`
-  ]);
+  // Secties met items (worden alleen getoond als er minstens één ≠0 item is)
+  const sections = [
+    {
+      title: "Kilometers & basistarief",
+      items: ["base", "linehaul"]
+    },
+    {
+      title: "Behandelingskosten",
+      items: ["handling_approach", "handling_depart", "handling_load", "handling_unload"]
+    },
+    {
+      title: "Toeslagen & heffingen",
+      items: ["km_levy", "accessorials", "fuel", "zone_flat", "discount"]
+    }
+  ];
 
-  const valX = right - 120;
-  rowsCalc.forEach(([k, v]) => {
-    doc.setTextColor(80); doc.text(k, left, y);
-    doc.setTextColor(20); doc.text(v, valX, y);
-    y += 14;
-    if (y > 780) { doc.addPage(); y = 40; }
-  });
+  doc.setFont("helvetica", "normal"); doc.setFontSize(10);
 
-  y += 8;
-  doc.setDrawColor(220);
-  doc.line(left, y, right, y);
-  y += 18;
+  for (const sec of sections) {
+    // bepaal zichtbare (≠0) regels in deze sectie
+    const visible = sec.items
+      .map(k => ({ k, v: quote?.breakdown?.[k] }))
+      .filter(({ v }) => v != null && Math.abs(Number(v)) >= 0.005);
 
-  // totaal
-  doc.setFont("helvetica", "bold"); doc.setFontSize(14); doc.setTextColor(20);
-  doc.text("Totaal", left, y);
-  doc.text(`€ ${Number(quote.total).toFixed(2)}`, valX, y);
-  y += 20;
+    if (visible.length === 0) continue; // lege sectie overslaan
 
-  // voetnoot
-  doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.setTextColor(120);
-  const foot = "Aanrij 0,5u + afrij 0,5u. Laden/lossen 1,5u bij volle trailer, naar rato per beladingsgraad. Kilometerheffing optioneel. Brandstoftoeslag op subtotaal. The Coatinc Company · www.coatinc.com";
-  const split = doc.splitTextToSize(foot, right - left);
-  doc.text(split, left, y);
+    // kop
+    if (y > 270) { doc.addPage(); y = margin; }
+    doc.setFont("helvetica", "bold"); doc.setFontSize(12); doc.text(sec.title, margin, y);
+    y += 5; doc.setFont("helvetica", "normal"); doc.setFontSize(10);
 
-  // download
-  doc.save("Coatinc-Transport-Berekening.pdf");
+    // regels
+    for (const { k, v } of visible) {
+      if (y > 270) { doc.addPage(); y = margin; }
+      const label = labels[k] || k;
+      doc.text(`${label}${hoursSuffix(k)}`, margin, y);
+      doc.setFont("helvetica", "bold");
+      doc.text(eur(v), 210 - margin, y, { align: "right" });
+      doc.setFont("helvetica", "normal");
+      y += 6;
+    }
+    y += 2;
+  }
+
+  line(doc, margin, y, 210 - margin, y); y += 8;
+
+  // Totaal
+  doc.setFont("helvetica", "bold"); doc.setFontSize(13);
+  doc.text("Totaal", margin, y);
+  doc.text(eur(quote?.total ?? 0), 210 - margin, y, { align: "right" });
+
+  const safeRef = (reference || "offerte").replace(/[^\w.-]+/g, "_");
+  const fileName = `Transportberekening_${safeRef}.pdf`;
+  doc.save(fileName);
 }
