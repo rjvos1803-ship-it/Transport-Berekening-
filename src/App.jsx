@@ -3,9 +3,10 @@ import { useState } from 'react'
 import { exportQuoteToPDF } from './lib/pdfutil.js'
 
 const TRAILER_LABELS = {
+  vlakke: 'Vlakke trailer',
+  uitschuif: 'Uitschuif trailer',
+  dieplader: 'Dieplader',
   tautliner: 'Tautliner',
-  mega: 'Open oplegger',
-  koel: 'Dieplader',
 }
 
 const BREAKDOWN_NL = {
@@ -31,7 +32,7 @@ export default function App() {
     reference: '',
     from: '',
     to: '',
-    trailer_type: 'tautliner',
+    trailer_type: 'vlakke',
     load_grade: 'quarter',
     city_delivery: false,
     load: false,
@@ -52,7 +53,7 @@ export default function App() {
       reference: '',
       from: '',
       to: '',
-      trailer_type: 'tautliner',
+      trailer_type: 'vlakke',
       load_grade: 'quarter',
       city_delivery: false,
       load: false,
@@ -93,9 +94,12 @@ export default function App() {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.detail || data.error || 'Berekening mislukt')
+
+      // labels voor UI + PDF
       data.inputs.trailer_type_label =
         TRAILER_LABELS[data.inputs.trailer_type] || data.inputs.trailer_type
       data.inputs.load_label = loadObj.label
+
       setQuote(data)
     } catch (err) {
       setError(String(err.message || err))
@@ -108,7 +112,7 @@ export default function App() {
     if (!quote) return
     await exportQuoteToPDF(quote, {
       reference: form.reference,
-      logoUrl: '/logo.jpg',             // staat in /public/logo.jpg
+      logoUrl: '/logo.jpg',
       company: 'The Coatinc Company',
       title: 'Coatinc Transport berekening'
     })
@@ -128,7 +132,7 @@ export default function App() {
       {/* Main */}
       <main className="max-w-5xl mx-auto px-4 py-6">
         <form onSubmit={submit} className="grid gap-4">
-          {/* Rij 1: referentie / van / naar */}
+          {/* Rij 1 */}
           <div className="grid md:grid-cols-3 gap-4">
             <div className="bg-white border rounded-xl p-4 shadow-sm">
               <label className="block text-sm font-medium mb-1">
@@ -169,7 +173,7 @@ export default function App() {
             </div>
           </div>
 
-          {/* Rij 2: trailer / beladingsgraad / opties */}
+          {/* Rij 2 */}
           <div className="grid md:grid-cols-3 gap-4">
             <div className="bg-white border rounded-xl p-4 shadow-sm">
               <label className="block text-sm font-medium mb-1">Trailertype</label>
@@ -179,9 +183,10 @@ export default function App() {
                 onChange={onChange}
                 className="w-full rounded-lg border px-3 py-2 outline-none focus:ring-2 focus:ring-black/20"
               >
+                <option value="vlakke">Vlakke trailer</option>
+                <option value="uitschuif">Uitschuif trailer</option>
+                <option value="dieplader">Dieplader</option>
                 <option value="tautliner">Tautliner</option>
-                <option value="mega">Open oplegger</option>
-                <option value="koel">Dieplader</option>
               </select>
             </div>
 
@@ -220,14 +225,12 @@ export default function App() {
             </div>
           </div>
 
-          {/* Foutmelding */}
           {error && (
             <div className="bg-red-50 text-red-800 border border-red-200 rounded-xl p-3">
               {error}
             </div>
           )}
 
-          {/* Acties */}
           <div className="flex flex-wrap gap-3">
             <button
               type="submit"
@@ -254,7 +257,6 @@ export default function App() {
           </div>
         </form>
 
-        {/* Resultaatkaart */}
         {quote && (
           <div className="mt-6 bg-white border rounded-xl shadow-sm p-4">
             <h2 className="font-semibold mb-3">Resultaat</h2>
