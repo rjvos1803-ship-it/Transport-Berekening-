@@ -247,7 +247,7 @@ export default function App() {
                   checked={form.load_unload_internal}
                   onChange={onChange}
                 />
-                <span>Laden/lossen interne locatie (+0,5 u extra)</span>
+                <span>Laden/lossen interne locatie</span>
               </label>
 
               <label className="flex items-center gap-2 mb-1">
@@ -257,7 +257,7 @@ export default function App() {
                   checked={form.load_unload_external}
                   onChange={onChange}
                 />
-                <span>Laden/lossen externe locatie (+1,5 u extra)</span>
+                <span>Laden/lossen externe locatie</span>
               </label>
 
               <label className="flex items-center gap-2 mb-1">
@@ -267,7 +267,7 @@ export default function App() {
 
               <label className="flex items-center gap-2 mb-1">
                 <input type="checkbox" name="combined" checked={form.combined} onChange={onChange} />
-                <span>Gecombineerd transport (20% korting)</span>
+                <span>Gecombineerd transport</span>
               </label>
 
               <label className="flex items-center gap-2">
