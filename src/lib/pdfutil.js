@@ -1,7 +1,6 @@
 // src/lib/pdfutil.js
-// PDF: secties alleen tonen als er zichtbare regels (≠0) zijn, 0-regels overslaan,
-// korting (negatieve) groen tonen, nette kop en tabel-achtige lijst.
-// Kilometerkosten (linehaul) NIET tonen, maar wel meegerekend in totalen.
+// PDF: toont géén linehaul & géén brandstoftoeslag, wel meegerekend in totalen.
+// Laden/lossen als één regel. 0-regels overslaan. Geen haakjes met uren.
 
 import jsPDF from 'jspdf';
 
@@ -45,9 +44,7 @@ export async function exportQuoteToPDF(quote, meta = {}) {
 
   // Header
   const dataURL = await loadImageAsDataURL(logoUrl);
-  if (dataURL) {
-    try { doc.addImage(dataURL, "JPEG", margin, y - 2, 30, 0); } catch {}
-  }
+  if (dataURL) { try { doc.addImage(dataURL, "JPEG", margin, y - 2, 30, 0); } catch {} }
   doc.setFont("helvetica", "bold"); doc.setFontSize(16); doc.text(title, margin + 35, y + 2);
   doc.setFontSize(10); doc.setFont("helvetica", "normal"); doc.text(company, margin + 35, y + 8);
   y += 14; line(doc, margin, y, 210 - margin, y); y += 6;
@@ -68,8 +65,8 @@ export async function exportQuoteToPDF(quote, meta = {}) {
 
   const opt = quote?.inputs?.options || {};
   const optsTxt = [
-    opt.load_unload_internal ? "Laden/lossen interne locatie (+0,5 u)" : null,
-    opt.load_unload_external ? "Laden/lossen externe locatie (+1,5 u)" : null,
+    opt.load_unload_internal ? "Laden/lossen interne locatie" : null,
+    opt.load_unload_external ? "Laden/lossen externe locatie" : null,
     opt.autolaad_kraan ? "Autolaadkraan" : null,
     opt.combined ? "Gecombineerd transport (20% korting)" : null,
     opt.km_levy ? "Kilometerheffing" : null,
@@ -81,55 +78,47 @@ export async function exportQuoteToPDF(quote, meta = {}) {
   doc.setFont("helvetica", "bold"); doc.setFontSize(12); doc.text("Resultaat", margin, y); y += 5;
   doc.setFont("helvetica", "normal"); doc.setFontSize(10);
   addLabelValue(doc, "Afstand:", `${quote?.derived?.distance_km ?? 0} km`, margin, y);
-  addLabelValue(doc, "Uurtarief handling:", `${eur(quote?.derived?.rate_used ?? 0)}/u`, 120, y); y += 8;
+  addLabelValue(doc, "Uurtarief handling:", `€ ${(quote?.derived?.rate_used ?? 0).toFixed(2)}/u`, 120, y); y += 8;
 
-  // Labels + uren
+  // Labels (zonder linehaul en fuel; laden/lossen gecombineerd)
   const labels = {
     base: "Basistarief",
-    // linehaul niet renderen
     handling_approach: "Aanrijden",
+    handling_combined: "Laden/lossen",
     handling_depart: "Afrijden",
-    handling_load: "Laden",
-    handling_unload: "Lossen",
     km_levy: "Kilometerheffing",
     accessorials: "Bijkosten",
-    fuel: "Brandstoftoeslag",
     zone_flat: "Zonetoeslag",
     discount: "Korting gecombineerd transport",
   };
-  const hoursSuffix = (k) => {
-    const d = quote?.derived || {};
-    if (k === "handling_approach") return ` (${(d.approach_hours ?? 0).toFixed(2)} u)`;
-    if (k === "handling_depart")   return ` (${(d.depart_hours ?? 0).toFixed(2)} u)`;
-    if (k === "handling_load")     return ` (${(d.load_hours ?? 0).toFixed(2)} u)`;
-    if (k === "handling_unload")   return ` (${(d.unload_hours ?? 0).toFixed(2)} u)`;
-    return "";
-  };
 
-  // Secties – linehaul niet opnemen
-  const sections = [
-    { title: "Kilometers & basistarief", items: ["base"] }, // linehaul bewust weggelaten
-    { title: "Behandelingskosten",       items: ["handling_approach", "handling_depart", "handling_load", "handling_unload"] },
-    { title: "Toeslagen & heffingen",    items: ["km_levy", "accessorials", "fuel", "zone_flat", "discount"] },
-  ];
+  // Maak gecombineerd bedrag
+  const b = quote?.breakdown || {};
+  const handling_combined = Number(((b.handling_load || 0) + (b.handling_unload || 0)).toFixed(2));
 
-  for (const sec of sections) {
-    const visible = sec.items
-      .map(k => ({ k, v: quote?.breakdown?.[k] }))
-      .filter(({ v }) => v != null && Math.abs(Number(v)) >= 0.005);
+  const items = [
+    ['base', b.base],
+    ['handling_approach', b.handling_approach],
+    ['handling_combined', handling_combined],
+    ['handling_depart', b.handling_depart],
+    // fuel & linehaul worden bewust NIET toegevoegd
+    ['km_levy', b.km_levy],
+    ['accessorials', b.accessorials],
+    ['zone_flat', b.zone_flat],
+    ['discount', b.discount],
+  ].filter(([, v]) => v != null && Math.abs(Number(v)) >= 0.005);
 
-    if (visible.length === 0) continue;
+  if (items.length) {
+    // Sectietitel alleen tonen indien er items zijn
+    doc.setFont("helvetica", "bold"); doc.setFontSize(12); doc.text("Kostenoverzicht", margin, y); y += 5;
+    doc.setFont("helvetica", "normal"); doc.setFontSize(10);
 
-    if (y > 270) { doc.addPage(); y = margin; }
-    doc.setFont("helvetica", "bold"); doc.setFontSize(12); doc.text(sec.title, margin, y);
-    y += 5; doc.setFont("helvetica", "normal"); doc.setFontSize(10);
-
-    for (const { k, v } of visible) {
+    for (const [k, v] of items) {
       if (y > 270) { doc.addPage(); y = margin; }
       const isDiscount = k === 'discount' && Number(v) < 0;
 
       doc.setTextColor(0, 0, 0);
-      doc.text(`${labels[k] || k}${hoursSuffix(k)}`, margin, y);
+      doc.text(labels[k] || k, margin, y);
 
       if (isDiscount) doc.setTextColor(20, 120, 90);
       doc.setFont("helvetica", "bold");
@@ -139,16 +128,15 @@ export async function exportQuoteToPDF(quote, meta = {}) {
 
       y += 6;
     }
-    y += 2;
   }
 
   line(doc, margin, y, 210 - margin, y); y += 8;
 
+  // Totaal
   doc.setFont("helvetica", "bold"); doc.setFontSize(13);
   doc.text("Totaal", margin, y);
   doc.text(eur(quote?.total ?? 0), 210 - margin, y, { align: "right" });
 
   const safeRef = (reference || "offerte").replace(/[^\w.-]+/g, "_");
-  const fileName = `Transportberekening_${safeRef}.pdf`;
-  doc.save(fileName);
+  doc.save(`Transportberekening_${safeRef}.pdf`);
 }
