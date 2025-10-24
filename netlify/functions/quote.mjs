@@ -142,7 +142,15 @@ export default async (req) => {
     const handling = calcHandlingSplit(cfg, opts, ratio);
 
     // 🔧 Beladingsgraad beïnvloedt nu linehaul:
-    const linehaul = distance_km * (cfg.eur_per_km_base || 0) * (trailer.multiplier || 1) * ratio;
+    // Pas ratio aan met minimale verhoudingen
+let scaledRatio = ratio;
+if (ratio <= 0.25) scaledRatio = 0.6;
+else if (ratio <= 0.5) scaledRatio = 0.8;
+else if (ratio <= 0.75) scaledRatio = 0.9;
+else scaledRatio = 1.0;
+
+// Beladingsgraad beïnvloedt km-kosten met bovengrens
+const linehaul = distance_km * (cfg.eur_per_km_base || 0) * (trailer.multiplier || 1) * scaledRatio;
 
     const km_levy = opts.km_levy ? (cfg.km_levy?.eur_per_km ?? 0.12) * distance_km : 0;
     const accessorials_fixed = opts.city_delivery ? (cfg.accessorials?.city_delivery || 0) : 0;
