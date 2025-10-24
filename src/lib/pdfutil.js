@@ -1,6 +1,7 @@
 // src/lib/pdfutil.js
-// Strakke PDF: secties alleen tonen als er zichtbare regels (≠0) zijn, 0-regels overslaan,
+// PDF: secties alleen tonen als er zichtbare regels (≠0) zijn, 0-regels overslaan,
 // korting (negatieve) groen tonen, nette kop en tabel-achtige lijst.
+// Kilometerkosten (linehaul) NIET tonen, maar wel meegerekend in totalen.
 
 import jsPDF from 'jspdf';
 
@@ -67,12 +68,12 @@ export async function exportQuoteToPDF(quote, meta = {}) {
 
   const opt = quote?.inputs?.options || {};
   const optsTxt = [
-    opt.city_delivery ? "Binnenstad" : null,
+    opt.load_unload_internal ? "Laden/lossen interne locatie (+0,5 u)" : null,
+    opt.load_unload_external ? "Laden/lossen externe locatie (+1,5 u)" : null,
     opt.autolaad_kraan ? "Autolaadkraan" : null,
     opt.combined ? "Gecombineerd transport (20% korting)" : null,
-    opt.load ? "Laden" : null,
-    opt.unload ? "Lossen" : null,
-    opt.km_levy ? "Kilometerheffing" : null
+    opt.km_levy ? "Kilometerheffing" : null,
+    opt.city_delivery ? "Binnenstad" : null
   ].filter(Boolean).join(", ") || "-";
   addLabelValue(doc, "Opties:", optsTxt, margin, y); y += 8;
 
@@ -85,7 +86,7 @@ export async function exportQuoteToPDF(quote, meta = {}) {
   // Labels + uren
   const labels = {
     base: "Basistarief",
-    linehaul: "Kilometerkosten",
+    // linehaul niet renderen
     handling_approach: "Aanrijden",
     handling_depart: "Afrijden",
     handling_load: "Laden",
@@ -105,8 +106,9 @@ export async function exportQuoteToPDF(quote, meta = {}) {
     return "";
   };
 
+  // Secties – linehaul niet opnemen
   const sections = [
-    { title: "Kilometers & basistarief", items: ["base", "linehaul"] },
+    { title: "Kilometers & basistarief", items: ["base"] }, // linehaul bewust weggelaten
     { title: "Behandelingskosten",       items: ["handling_approach", "handling_depart", "handling_load", "handling_unload"] },
     { title: "Toeslagen & heffingen",    items: ["km_levy", "accessorials", "fuel", "zone_flat", "discount"] },
   ];
@@ -115,6 +117,7 @@ export async function exportQuoteToPDF(quote, meta = {}) {
     const visible = sec.items
       .map(k => ({ k, v: quote?.breakdown?.[k] }))
       .filter(({ v }) => v != null && Math.abs(Number(v)) >= 0.005);
+
     if (visible.length === 0) continue;
 
     if (y > 270) { doc.addPage(); y = margin; }
