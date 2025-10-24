@@ -11,7 +11,7 @@ const TRAILER_LABELS = {
 
 const LABELS = {
   base: 'Basistarief',
-  linehaul: 'Kilometerkosten',
+  // linehaul niet tonen in UI, maar laten bestaan voor volledigheid
   handling_approach: 'Aanrijden',
   handling_depart: 'Afrijden',
   handling_load: 'Laden',
@@ -31,10 +31,9 @@ const LOAD_OPTIONS = [
   { key: 'full', label: 'Volle trailer', value: 1.0 },
 ]
 
-// volgorde waarin we tonen (zonder handling_total)
+// volgorde (zonder linehaul)
 const ORDER = [
   'base',
-  'linehaul',
   'handling_approach',
   'handling_depart',
   'handling_load',
@@ -53,12 +52,15 @@ export default function App() {
     to: '',
     trailer_type: 'vlakke',
     load_grade: 'half',
+
     city_delivery: false,
     autolaad_kraan: false,
     combined: false,
-    load: false,
-    unload: false,
     km_levy: false,
+
+    // nieuwe exclusieve opties:
+    load_unload_internal: false,
+    load_unload_external: false,
   })
   const [quote, setQuote] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -66,6 +68,17 @@ export default function App() {
 
   const onChange = (e) => {
     const { name, value, type, checked } = e.target
+
+    // Exclusiviteit afdwingen in de UI:
+    if (name === 'load_unload_internal' && checked) {
+      setForm((f) => ({ ...f, load_unload_internal: true, load_unload_external: false }))
+      return
+    }
+    if (name === 'load_unload_external' && checked) {
+      setForm((f) => ({ ...f, load_unload_internal: false, load_unload_external: true }))
+      return
+    }
+
     setForm((f) => ({ ...f, [name]: type === 'checkbox' ? checked : value }))
   }
 
@@ -79,9 +92,9 @@ export default function App() {
       city_delivery: false,
       autolaad_kraan: false,
       combined: false,
-      load: false,
-      unload: false,
       km_levy: false,
+      load_unload_internal: false,
+      load_unload_external: false,
     })
     setQuote(null)
     setError('')
@@ -109,9 +122,12 @@ export default function App() {
             city_delivery: form.city_delivery,
             autolaad_kraan: form.autolaad_kraan,
             combined: form.combined,
-            load: form.load,
-            unload: form.unload,
             km_levy: form.km_levy,
+
+            // nieuwe opties
+            load_unload_internal: form.load_unload_internal,
+            load_unload_external: form.load_unload_external,
+
             load_grade: form.load_grade,
             load_fraction: loadObj.value
           }
@@ -120,7 +136,6 @@ export default function App() {
       const data = await res.json()
       if (!res.ok) throw new Error(data.detail || data.error || 'Berekening mislukt')
 
-      // labels voor UI
       data.inputs.trailer_type_label =
         TRAILER_LABELS[data.inputs.trailer_type] || data.inputs.trailer_type
       data.inputs.load_label = loadObj.label
@@ -237,53 +252,69 @@ export default function App() {
 
             <div className="bg-white border rounded-2xl p-4 shadow-sm">
               <span className="block text-sm font-medium mb-2">Opties</span>
+
               <label className="flex items-center gap-2 mb-1">
-                <input type="checkbox" name="city_delivery" checked={form.city_delivery} onChange={onChange} />
-                <span>Binnenstad</span>
+                <input
+                  type="checkbox"
+                  name="load_unload_internal"
+                  checked={form.load_unload_internal}
+                  onChange={onChange}
+                />
+                <span>Laden/lossen interne locatie (+0,5 u)</span>
               </label>
+
+              <label className="flex items-center gap-2 mb-1">
+                <input
+                  type="checkbox"
+                  name="load_unload_external"
+                  checked={form.load_unload_external}
+                  onChange={onChange}
+                />
+                <span>Laden/lossen externe locatie (+1,5 u)</span>
+              </label>
+
               <label className="flex items-center gap-2 mb-1">
                 <input type="checkbox" name="autolaad_kraan" checked={form.autolaad_kraan} onChange={onChange} />
                 <span>Autolaadkraan</span>
               </label>
+
               <label className="flex items-center gap-2 mb-1">
                 <input type="checkbox" name="combined" checked={form.combined} onChange={onChange} />
-                <span>Gecombineerd transport</span>
+                <span>Gecombineerd transport (20% korting)</span>
               </label>
-              <label className="flex items-center gap-2 mb-1">
-                <input type="checkbox" name="load" checked={form.load} onChange={onChange} />
-                <span>Laden</span>
-              </label>
-              <label className="flex items-center gap-2 mb-1">
-                <input type="checkbox" name="unload" checked={form.unload} onChange={onChange} />
-                <span>Lossen</span>
-              </label>
+
               <label className="flex items-center gap-2">
                 <input type="checkbox" name="km_levy" checked={form.km_levy} onChange={onChange} />
                 <span>Kilometerheffing toepassen</span>
               </label>
+
+              <label className="flex items-center gap-2 mt-1">
+                <input type="checkbox" name="city_delivery" checked={form.city_delivery} onChange={onChange} />
+                <span>Binnenstad</span>
+              </label>
             </div>
           </div>
 
-        {error && (
-          <div className="bg-red-50 text-red-800 border border-red-200 rounded-2xl p-3">
-            {error}
-          </div>
-        )}
+          {error && (
+            <div className="bg-red-50 text-red-800 border border-red-200 rounded-2xl p-3">
+              {error}
+            </div>
+          )}
 
-        <div className="flex flex-wrap gap-3">
-          <button type="submit" disabled={loading}
-            className="inline-flex items-center gap-2 bg-black text-white px-4 py-2 rounded-lg disabled:opacity-60">
-            {loading ? 'Berekenen…' : 'Bereken tarief'}
-          </button>
-          <button type="button" onClick={clearAll}
-            className="inline-flex items-center gap-2 bg-gray-700 text-white px-4 py-2 rounded-lg">
-            Leegmaken
-          </button>
-          <button type="button" onClick={downloadPDF} disabled={!quote}
-            className="inline-flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-lg disabled:opacity-60">
-            Download PDF
-          </button>
-        </div>
+          <div className="flex flex-wrap gap-3">
+            <button type="submit" disabled={loading}
+              className="inline-flex items-center gap-2 bg-black text-white px-4 py-2 rounded-lg disabled:opacity-60">
+              {loading ? 'Berekenen…' : 'Bereken tarief'}
+            </button>
+            <button type="button" onClick={clearAll}
+              className="inline-flex items-center gap-2 bg-gray-700 text-white px-4 py-2 rounded-lg">
+              Leegmaken
+            </button>
+            <button type="button" onClick={downloadPDF} disabled={!quote}
+              className="inline-flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-lg disabled:opacity-60">
+              Download PDF
+            </button>
+          </div>
         </form>
 
         {/* RESULTAAT */}
@@ -319,7 +350,7 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Breakdown als tabel */}
+              {/* Breakdown tabel */}
               <div className="p-4">
                 <div className="text-sm font-semibold mb-2">Resultaat</div>
 
