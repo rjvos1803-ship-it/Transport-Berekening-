@@ -1,7 +1,7 @@
 // netlify/functions/quote.mjs
 // Transport berekening met gesplitste handling, autolaadkraan, gecombineerde korting,
-// 1× pallet staffels, én nieuwe opties voor laden/lossen locaties (interne/externe).
-// Kilometerkosten (linehaul) worden wel meegerekend, maar kun je in UI/PDF verbergen.
+// 1× pallet staffels, nieuwe opties interne/externe laden/lossen met vaste totalen,
+// en kilometerkosten (linehaul) die WEL meetellen maar je in UI/PDF kunt verbergen.
 
 import fs from "fs/promises";
 import path from "path";
@@ -13,7 +13,7 @@ const DEFAULT_CFG = {
   handling: {
     approach_min_hours: 0.5,
     depart_min_hours: 0.5,
-    full_trailer_load_unload_hours: 1.5,
+    full_trailer_load_unload_hours: 1.5, // basis per bewerking (laden OF lossen) bij volle trailer (alleen gebruikt als geen interne/externe optie)
     rate_per_hour: 92.5
   },
   km_levy: { eur_per_km: 0.12 },
@@ -81,10 +81,16 @@ const GEOCODER = {
   }
 };
 
-// Nieuwe regels:
-// - load_unload_internal  => +0.5 uur extra laad/los
-// - load_unload_external  => +1.5 uur extra laad/los
-// - Niet beide: als beide binnenkomen, krijgt "external" voorrang.
+/**
+ * Handling uren/kosten opsplitsen:
+ * - Altijd aanrijden & afrijden minimaal 0,5 u elk.
+ * - Bij opties:
+ *   - interne locatie  => totaal laden+lossen = 1,5 + 0,5 = 2,0 u (1,0 u + 1,0 u)
+ *   - externe locatie  => totaal laden+lossen = 1,5 + 1,5 = 3,0 u (1,5 u + 1,5 u)
+ * - Als géén van beide: gebruik klassieke schaal met beladingsgraad:
+ *   per_op_full (1,5 u) * ratio voor laden én voor lossen.
+ * - Autolaadkraan verhoogt uurtarief met 28%.
+ */
 function calcHandlingSplit(cfg, options, ratio, rateOverride) {
   const h = cfg.handling || {};
   const approach_h = h.approach_min_hours ?? 0.5;
@@ -95,25 +101,25 @@ function calcHandlingSplit(cfg, options, ratio, rateOverride) {
   const craneMult = options.autolaad_kraan ? (cfg.auto_crane?.handling_rate_multiplier ?? 1.28) : 1;
   const rate = rateOverride ?? (baseRate * craneMult);
 
-  // Exclusiviteit afdwingen (server-side extra zekerheid)
-  const internal = !!options.load_unload_internal;
-  const external = !!options.load_unload_external && !internal ? !!options.load_unload_external : !!options.load_unload_external;
-  const both = internal && options.load_unload_external;
-  const useInternal = both ? false : internal; // als beide: external > internal
-  const useExternal = both ? true  : !!options.load_unload_external;
+  // exclusiviteit: externe > interne
+  const useExternal = !!options.load_unload_external;
+  const useInternal = !useExternal && !!options.load_unload_internal;
 
-  const hasLoadOps = useInternal || useExternal;
+  let load_h, unload_h;
 
-  // Basis uren voor laden én lossen (allebei), op basis van beladingsgraad
-  const base_load_h   = hasLoadOps ? per_op_full * ratio : 0;
-  const base_unload_h = hasLoadOps ? per_op_full * ratio : 0;
-
-  // Extra uren door locatie
-  const extra_total = (useInternal ? 0.5 : 0) + (useExternal ? 1.5 : 0);
-  const extra_each  = extra_total / (hasLoadOps ? 2 : 1 || 1); // netjes verdelen over laden/lossen
-
-  const load_h   = base_load_h   + (hasLoadOps ? extra_each : 0);
-  const unload_h = base_unload_h + (hasLoadOps ? extra_each : 0);
+  if (useInternal) {
+    // totaal 2,0 u ⇒ 1,0 u laden + 1,0 u lossen
+    load_h = 1.0;
+    unload_h = 1.0;
+  } else if (useExternal) {
+    // totaal 3,0 u ⇒ 1,5 u laden + 1,5 u lossen
+    load_h = 1.5;
+    unload_h = 1.5;
+  } else {
+    // klassieke schaal op basis van beladingsgraad
+    load_h   = per_op_full * ratio;
+    unload_h = per_op_full * ratio;
+  }
 
   const approach_cost = approach_h * rate;
   const depart_cost   = depart_h   * rate;
@@ -150,7 +156,7 @@ function calcOnePalletFlat(cfg, distance_km, options) {
     if (distance_km <= t.max_km) { price = t.price; break; }
   }
 
-  // Voor 1× pallet nemen we alleen extra's mee als config dat zegt.
+  // 1× pallet: handling optioneel volgens config (default false)
   let handlingSplit = {
     hours: { approach_hours:0, depart_hours:0, load_hours:0, unload_hours:0, total_hours:0, rate_used: (cfg.handling?.rate_per_hour ?? 92.5) },
     costs: { handling_approach:0, handling_depart:0, handling_load:0, handling_unload:0, handling_total_internal:0 }
@@ -183,7 +189,7 @@ function calcOnePalletFlat(cfg, distance_km, options) {
   return {
     breakdown: {
       base: Number(price.toFixed(2)),
-      linehaul: 0, // verbergen in UI/PDF, maar 0 voor deze 1x pallet flat
+      linehaul: 0,
       handling_approach: handlingSplit.costs.handling_approach,
       handling_depart:   handlingSplit.costs.handling_depart,
       handling_load:     handlingSplit.costs.handling_load,
@@ -214,14 +220,14 @@ export default async (request) => {
     const distance_km = await GEOCODER.distanceKm(from, to);
     const trailer = cfg.trailers[trailer_type] || cfg.trailers.vlakke;
 
-    // Exclusiviteit guard: als beide flags binnenkomen, kies external.
+    // exclusiviteit server-side: externe > interne
     const optionsSafe = {
       ...options,
-      load_unload_internal: !!options.load_unload_internal && !options.load_unload_external,
       load_unload_external: !!options.load_unload_external,
+      load_unload_internal: !!options.load_unload_external ? false : !!options.load_unload_internal
     };
 
-    // 1× pallet?
+    // 1× pallet staffel?
     const isOnePallet =
       optionsSafe.load_grade === "one_pallet" ||
       (typeof optionsSafe.load_fraction === "number" && optionsSafe.load_fraction <= 0.06);
@@ -242,16 +248,16 @@ export default async (request) => {
       }
     }
 
-    // beladingsgraad
+    // beladingsgraad ratio
     let ratio = 0;
     if (typeof optionsSafe.load_fraction === "number") ratio = optionsSafe.load_fraction;
     else if (typeof optionsSafe.load_grade === "string") ratio = cfg.beladingsgraad?.[optionsSafe.load_grade] ?? 0;
     ratio = Math.max(0, Math.min(1, Number.isFinite(ratio) ? ratio : 0));
 
-    // handling split
+    // handling split met nieuwe totals
     const handlingSplit = calcHandlingSplit(cfg, optionsSafe, ratio);
 
-    // kilometers (WEL rekenen, maar niet tonen in UI/PDF straks)
+    // kilometers (WEL rekenen, UI/PDF verbergen)
     const linehaul = distance_km * (cfg.eur_per_km_base || 0) * (trailer.multiplier || 1);
 
     // km-heffing
@@ -291,7 +297,7 @@ export default async (request) => {
       },
       breakdown: {
         base: Number(base.toFixed(2)),
-        linehaul: Number(linehaul.toFixed(2)), // wordt later verborgen in UI/PDF
+        linehaul: Number(linehaul.toFixed(2)), // telt mee, maar UI/PDF verbergen
         handling_approach: handlingSplit.costs.handling_approach,
         handling_depart:   handlingSplit.costs.handling_depart,
         handling_load:     handlingSplit.costs.handling_load,
@@ -300,7 +306,7 @@ export default async (request) => {
         accessorials: Number(accessorials_fixed.toFixed(2)),
         fuel: Number(fuel.toFixed(2)),
         zone_flat: Number(zone_flat.toFixed(2)),
-        discount: Number(discount.toFixed(2)) // negatief bedrag
+        discount: Number(discount.toFixed(2))
       },
       total: Number(total.toFixed(2)),
       currency: "EUR"
