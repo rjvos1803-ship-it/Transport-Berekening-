@@ -3,6 +3,18 @@
   "eur_per_km_base": 0.8,
   "fuel_pct": 0.18,
 
+  "load_factor": {
+    "one_pallet": 0.60,
+    "quarter": 0.60,
+    "half": 0.80,
+    "three_quarter": 0.90,
+    "full": 1.00,
+    "fallback_0_25": 0.60,
+    "fallback_0_50": 0.80,
+    "fallback_0_75": 0.90,
+    "fallback_1_00": 1.00
+  },
+
   "handling": {
     "approach_min_hours": 0.5,
     "depart_min_hours": 0.5,
@@ -11,9 +23,7 @@
   },
 
   "km_levy": { "eur_per_km": 0.12 },
-
-  "auto_crane": { "handling_rate_multiplier": 1.35 },
-
+  "auto_crane": { "handling_rate_multiplier": 1.28 },
   "combined_discount_pct": 0.20,
 
   "one_pallet_pricing": {
@@ -39,19 +49,13 @@
   },
 
   "trailers": {
-    "vlakke":     { "label": "Vlakke trailer",     "volume_m2": 33.0, "payload_kg": 24000, "multiplier": 1.00 },
-    "uitschuif":  { "label": "Uitschuif trailer",  "volume_m2": 33.0, "payload_kg": 23000, "multiplier": 1.10 },
-    "dieplader":  { "label": "Dieplader",          "volume_m2": 30.0, "payload_kg": 22000, "multiplier": 1.20 },
-    "tautliner":  { "label": "Tautliner",          "volume_m2": 33.0, "payload_kg": 24000, "multiplier": 1.05 }
+    "vlakke":    { "label": "Vlakke trailer",    "multiplier": 1.00 },
+    "uitschuif": { "label": "Uitschuif trailer", "multiplier": 1.10 },
+    "dieplader": { "label": "Dieplader",         "multiplier": 1.20 },
+    "tautliner": { "label": "Tautliner",         "multiplier": 1.05 }
   },
 
-  "zones": {
-    "NL": { "flat": 0 },
-    "BE": { "flat": 0 },
-    "DE": { "flat": 0 }
-  },
+  "zones": { "NL": { "flat": 0 } },
 
-  "accessorials": {
-    "city_delivery": 0
-  }
+  "accessorials": { "city_delivery": 0 }
 }
