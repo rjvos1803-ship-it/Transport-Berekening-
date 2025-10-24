@@ -144,9 +144,9 @@ export default async (req) => {
     // 🔧 Beladingsgraad beïnvloedt nu linehaul:
     // Pas ratio aan met minimale verhoudingen
 let scaledRatio = ratio;
-if (ratio <= 0.25) scaledRatio = 0.6;
-else if (ratio <= 0.5) scaledRatio = 0.8;
-else if (ratio <= 0.75) scaledRatio = 0.9;
+if (ratio <= 0.25) scaledRatio = 0.2;
+else if (ratio <= 0.5) scaledRatio = 0.4;
+else if (ratio <= 0.75) scaledRatio = 0.5;
 else scaledRatio = 1.0;
 
 // Beladingsgraad beïnvloedt km-kosten met bovengrens
