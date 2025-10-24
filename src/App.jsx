@@ -11,14 +11,11 @@ const TRAILER_LABELS = {
 
 const LABELS = {
   base: 'Basistarief',
-  // linehaul niet tonen in UI, maar laten bestaan voor volledigheid
   handling_approach: 'Aanrijden',
+  handling_combined: 'Laden/lossen',  // NIEUWE samengevoegde regel (UI)
   handling_depart: 'Afrijden',
-  handling_load: 'Laden',
-  handling_unload: 'Lossen',
   km_levy: 'Kilometerheffing',
   accessorials: 'Bijkosten',
-  fuel: 'Brandstoftoeslag',
   zone_flat: 'Zonetoeslag',
   discount: 'Korting gecombineerd transport',
 }
@@ -31,16 +28,14 @@ const LOAD_OPTIONS = [
   { key: 'full', label: 'Volle trailer', value: 1.0 },
 ]
 
-// volgorde (zonder linehaul)
+// Volgorde (linehaul & fuel NIET tonen)
 const ORDER = [
   'base',
   'handling_approach',
+  'handling_combined', // synthese van load + unload
   'handling_depart',
-  'handling_load',
-  'handling_unload',
   'km_levy',
   'accessorials',
-  'fuel',
   'zone_flat',
   'discount',
 ]
@@ -52,13 +47,10 @@ export default function App() {
     to: '',
     trailer_type: 'vlakke',
     load_grade: 'half',
-
     city_delivery: false,
     autolaad_kraan: false,
     combined: false,
     km_levy: false,
-
-    // nieuwe exclusieve opties:
     load_unload_internal: false,
     load_unload_external: false,
   })
@@ -68,8 +60,7 @@ export default function App() {
 
   const onChange = (e) => {
     const { name, value, type, checked } = e.target
-
-    // Exclusiviteit afdwingen in de UI:
+    // exclusief
     if (name === 'load_unload_internal' && checked) {
       setForm((f) => ({ ...f, load_unload_internal: true, load_unload_external: false }))
       return
@@ -78,7 +69,6 @@ export default function App() {
       setForm((f) => ({ ...f, load_unload_internal: false, load_unload_external: true }))
       return
     }
-
     setForm((f) => ({ ...f, [name]: type === 'checkbox' ? checked : value }))
   }
 
@@ -123,11 +113,8 @@ export default function App() {
             autolaad_kraan: form.autolaad_kraan,
             combined: form.combined,
             km_levy: form.km_levy,
-
-            // nieuwe opties
             load_unload_internal: form.load_unload_internal,
             load_unload_external: form.load_unload_external,
-
             load_grade: form.load_grade,
             load_fraction: loadObj.value
           }
@@ -158,14 +145,14 @@ export default function App() {
     })
   }
 
-  const hoursSuffix = (key) => {
-    if (!quote?.derived) return ''
-    const d = quote.derived
-    if (key === 'handling_approach') return ` (${d.approach_hours ?? 0} u)`
-    if (key === 'handling_depart')   return ` (${d.depart_hours ?? 0} u)`
-    if (key === 'handling_load')     return ` (${d.load_hours ?? 0} u)`
-    if (key === 'handling_unload')   return ` (${d.unload_hours ?? 0} u)`
-    return ''
+  // Maak een synthese voor weergave (laden + lossen)
+  const combineHandling = (q) => {
+    if (!q?.breakdown) return {}
+    const combined = (Number(q.breakdown.handling_load || 0) + Number(q.breakdown.handling_unload || 0))
+    return {
+      ...q.breakdown,
+      handling_combined: Number(combined.toFixed(2))
+    }
   }
 
   return (
@@ -260,7 +247,7 @@ export default function App() {
                   checked={form.load_unload_internal}
                   onChange={onChange}
                 />
-                <span>Laden/lossen interne locatie (+0,5 u)</span>
+                <span>Laden/lossen interne locatie (+0,5 u extra)</span>
               </label>
 
               <label className="flex items-center gap-2 mb-1">
@@ -270,7 +257,7 @@ export default function App() {
                   checked={form.load_unload_external}
                   onChange={onChange}
                 />
-                <span>Laden/lossen externe locatie (+1,5 u)</span>
+                <span>Laden/lossen externe locatie (+1,5 u extra)</span>
               </label>
 
               <label className="flex items-center gap-2 mb-1">
@@ -336,7 +323,7 @@ export default function App() {
                       : '—'}
                     {quote.inputs?.load_label ? (
                       <span className="ml-2 text-sm font-normal text-gray-500">
-                        ({quote.inputs.load_label})
+                        {quote.inputs.load_label}
                       </span>
                     ) : null}
                   </div>
@@ -344,8 +331,7 @@ export default function App() {
                 <div className="p-4">
                   <div className="text-xs uppercase tracking-wider text-gray-500">Uurtarief handling</div>
                   <div className="mt-1 text-lg font-semibold">
-                    € {(quote.derived.rate_used ?? 0).toFixed(2)}
-                    <span className="text-sm font-normal text-gray-500"> /u</span>
+                    € {(quote.derived.rate_used ?? 0).toFixed(2)}<span className="text-sm font-normal text-gray-500"> /u</span>
                   </div>
                 </div>
               </div>
@@ -356,33 +342,25 @@ export default function App() {
 
                 <div className="rounded-xl border border-gray-200 overflow-hidden">
                   <div className="divide-y divide-gray-200">
-                    {ORDER.map((k) => {
-                      const v = quote.breakdown?.[k]
-                      if (v == null || Math.abs(Number(v)) < 0.005) return null
+                    {(() => {
+                      const b = combineHandling(quote)
+                      return ORDER.map((k) => {
+                        // skip fuel & linehaul (we tonen ze sowieso niet in ORDER)
+                        const v = b?.[k]
+                        if (v == null || Math.abs(Number(v)) < 0.005) return null
 
-                      const hours = (() => {
-                        const d = quote.derived || {}
-                        if (k === 'handling_approach') return ` (${(d.approach_hours ?? 0)} u)`
-                        if (k === 'handling_depart')   return ` (${(d.depart_hours ?? 0)} u)`
-                        if (k === 'handling_load')     return ` (${(d.load_hours ?? 0)} u)`
-                        if (k === 'handling_unload')   return ` (${(d.unload_hours ?? 0)} u)`
-                        return ''
-                      })()
-
-                      const isDiscount = k === 'discount' && Number(v) < 0
-
-                      return (
-                        <div key={k} className="grid grid-cols-[1fr_auto] items-center px-4 py-2 bg-white">
-                          <div className="text-sm text-gray-600">
-                            {LABELS[k] ?? k}
-                            <span className="text-gray-400">{hours}</span>
+                        return (
+                          <div key={k} className="grid grid-cols-[1fr_auto] items-center px-4 py-2 bg-white">
+                            <div className="text-sm text-gray-600">
+                              {LABELS[k] ?? k}
+                            </div>
+                            <div className={`text-sm font-medium tabular-nums ${k === 'discount' && Number(v) < 0 ? 'text-emerald-600' : ''}`}>
+                              € {Number(v).toFixed(2)}
+                            </div>
                           </div>
-                          <div className={`text-sm font-medium tabular-nums ${isDiscount ? 'text-emerald-600' : ''}`}>
-                            € {Number(v).toFixed(2)}
-                          </div>
-                        </div>
-                      )
-                    })}
+                        )
+                      })
+                    })()}
                   </div>
                 </div>
 
