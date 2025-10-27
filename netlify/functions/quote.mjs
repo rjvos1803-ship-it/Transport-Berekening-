@@ -7,7 +7,7 @@ import fs from "fs/promises";
 import path from "path";
 
 const DEFAULT_CFG = {
-  min_fee: 110.0,
+  min_fee: 0.0,
   eur_per_km_base: 0.8,
   fuel_pct: 0.18,
   handling: {
