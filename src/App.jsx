@@ -286,7 +286,7 @@ export default function App() {
                 checked={form.options.combined}
                 onChange={() => onToggleOption("combined")}
               />
-              <span>Gecombineerd transport (20% korting)</span>
+              <span>Gecombineerd transport</span>
             </label>
 
             <label className="flex items-center gap-2">
