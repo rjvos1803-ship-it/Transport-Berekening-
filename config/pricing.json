@@ -3,16 +3,27 @@
   "eur_per_km_base": 0.8,
   "fuel_pct": 0.18,
 
+  /* Hoe zwaar telt beladingsgraad mee op km-kosten (linehaul)? */
   "load_factor": {
     "one_pallet": 0.60,
-    "quarter": 0.60,
-    "half": 0.80,
+    "quarter": 0.50,         // maak 1/4 zwaarder (meer verschil): 0.50 i.p.v. 0.60
+    "half": 0.75,
     "three_quarter": 0.90,
     "full": 1.00,
-    "fallback_0_25": 0.60,
-    "fallback_0_50": 0.80,
+
+    /* fallback-bandjes als iemand een “vrij” percentage zou kiezen */
+    "fallback_0_25": 0.50,
+    "fallback_0_50": 0.75,
     "fallback_0_75": 0.90,
     "fallback_1_00": 1.00
+  },
+
+  /* Welke posten schalen mee, en hoeveel deel daarvan? (0 = niet, 1 = volledig) */
+  "load_shares": {
+    "linehaul": 1.0,        // km-kosten volledig met load_factor
+    "km_levy": 1.0,         // km-heffing (0.12/km) ook volledig mee laten schalen
+    "zone_flat": 0.50,      // zone-toeslag voor 50% mee laten schalen
+    "base_fee_share": 0.00  // desnoods deel van basistarief laten meeschalen (hier 0%)
   },
 
   "handling": {
