@@ -238,7 +238,7 @@ export default async (request) => {
     if (options.city_delivery) accessorials_fixed += cfg.accessorials?.city_delivery || 0;
 
     // subtotalen
-    const base = cfg.min_fee || 0;
+    const base = cfg.min_fee || 110;
     const handlingTotalInternal = handlingSplit.costs.handling_total_internal;
     const subtotal = base + linehaul + handlingTotalInternal + km_levy + accessorials_fixed;
     const fuel = subtotal * (cfg.fuel_pct || 0);
@@ -252,7 +252,7 @@ export default async (request) => {
     const discPct = cfg.combined_discount_pct ?? 0.2;
     const discount = options.combined ? -(preTotal * discPct) : 0;
 
-    const total = Math.max(cfg.min_fee || 0, preTotal + discount);
+    const total = Math.max(cfg.min_fee || 110, preTotal + discount);
 
     const payload = {
       inputs: {
