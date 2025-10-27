@@ -1,5 +1,5 @@
 // netlify/functions/quote.mjs
-// Netlify Functions (ESM) - Transport berekening met gesplitste behandelingskosten
+// Transport berekening met gesplitste handling + gecombineerd transport (20% korting)
 
 import fs from "fs/promises";
 import path from "path";
@@ -16,6 +16,7 @@ const DEFAULT_CFG = {
   },
   km_levy: { eur_per_km: 0.12 },
   auto_crane: { handling_rate_multiplier: 1.28 },
+  combined_discount_pct: 0.20,
   one_pallet_pricing: {
     mode: "flat_per_distance",
     tiers: [
@@ -78,8 +79,7 @@ const GEOCODER = {
   }
 };
 
-// helper: bereken handling (uren + kosten) los per onderdeel
-function calcHandlingSplit(cfg, options, ratio, useRateOverride) {
+function calcHandlingSplit(cfg, options, ratio, rateOverride) {
   const h = cfg.handling || {};
   const approach_h = h.approach_min_hours ?? 0.5;
   const depart_h   = h.depart_min_hours   ?? 0.5;
@@ -87,7 +87,7 @@ function calcHandlingSplit(cfg, options, ratio, useRateOverride) {
 
   const baseRate  = h.rate_per_hour ?? 92.5;
   const craneMult = options.autolaad_kraan ? (cfg.auto_crane?.handling_rate_multiplier ?? 1.28) : 1;
-  const rate = useRateOverride ?? (baseRate * craneMult);
+  const rate = rateOverride ?? (baseRate * craneMult);
 
   const load_h   = options.load   ? per_op_full * ratio : 0;
   const unload_h = options.unload ? per_op_full * ratio : 0;
@@ -114,7 +114,8 @@ function calcHandlingSplit(cfg, options, ratio, useRateOverride) {
       handling_depart:   Number(depart_cost.toFixed(2)),
       handling_load:     Number(load_cost.toFixed(2)),
       handling_unload:   Number(unload_cost.toFixed(2)),
-      handling_total:    Number(total_cost.toFixed(2))
+      // handling_total niet meegeven in breakdown (alleen subregels)
+      handling_total_internal: Number(total_cost.toFixed(2))
     }
   };
 }
@@ -123,55 +124,60 @@ function calcOnePalletFlat(cfg, distance_km, options) {
   const op = cfg.one_pallet_pricing || {};
   if (op.mode !== "flat_per_distance") return null;
 
-  // 1) staffelprijs
   let price = op.price_above ?? 0;
   for (const t of op.tiers || []) {
     if (distance_km <= t.max_km) { price = t.price; break; }
   }
 
-  // 2) optioneel: handling (met crane multiplier)
   let handlingSplit = {
     hours: { approach_hours:0, depart_hours:0, load_hours:0, unload_hours:0, total_hours:0, rate_used: (cfg.handling?.rate_per_hour ?? 92.5) },
-    costs: { handling_approach:0, handling_depart:0, handling_load:0, handling_unload:0, handling_total:0 }
+    costs: { handling_approach:0, handling_depart:0, handling_load:0, handling_unload:0, handling_total_internal:0 }
   };
   if (op.include_handling) {
     const ratio = cfg.beladingsgraad?.one_pallet ?? 0.05;
     handlingSplit = calcHandlingSplit(cfg, options, ratio);
   }
 
-  // 3) km-heffing
   let km_levy = 0;
   if (op.include_km_levy && options.km_levy) {
     const kmlevy_rate = (cfg.km_levy?.eur_per_km) ?? 0.12;
     km_levy = kmlevy_rate * distance_km;
   }
 
-  // 4) binnenstad
   let accessorials_fixed = 0;
   if (op.include_city_delivery && options.city_delivery) {
     accessorials_fixed += cfg.accessorials?.city_delivery || 0;
   }
 
-  // 5) subtotalen
-  let subtotal = price + handlingSplit.costs.handling_total + km_levy + accessorials_fixed;
+  let subtotal = price + handlingSplit.costs.handling_total_internal + km_levy + accessorials_fixed;
   if (op.include_min_fee) subtotal = Math.max(subtotal, cfg.min_fee || 0);
   const fuel = op.include_fuel ? subtotal * (cfg.fuel_pct || 0) : 0;
+
+  // korting gecombineerd
+  const preTotal = subtotal + fuel;
+  const discPct = cfg.combined_discount_pct ?? 0.2;
+  const discount = options.combined ? -(preTotal * discPct) : 0;
+  const total = preTotal + discount;
 
   return {
     breakdown: {
       base: Number(price.toFixed(2)),
       linehaul: 0,
-      ...handlingSplit.costs,
+      handling_approach: handlingSplit.costs.handling_approach,
+      handling_depart:   handlingSplit.costs.handling_depart,
+      handling_load:     handlingSplit.costs.handling_load,
+      handling_unload:   handlingSplit.costs.handling_unload,
       km_levy: Number(km_levy.toFixed(2)),
       accessorials: Number(accessorials_fixed.toFixed(2)),
       fuel: Number(fuel.toFixed(2)),
+      discount: Number(discount.toFixed(2)),
       zone_flat: 0
     },
     derived: {
       distance_km,
       ...handlingSplit.hours
     },
-    total: Number((subtotal + fuel).toFixed(2))
+    total: Number(total.toFixed(2))
   };
 }
 
@@ -190,7 +196,7 @@ export default async (request) => {
     const distance_km = await GEOCODER.distanceKm(from, to);
     const trailer = cfg.trailers[trailer_type] || cfg.trailers.vlakke;
 
-    // 1× pallet speciale staffel
+    // 1× pallet?
     const isOnePallet =
       options.load_grade === "one_pallet" ||
       (typeof options.load_fraction === "number" && options.load_fraction <= 0.06);
@@ -211,20 +217,16 @@ export default async (request) => {
       }
     }
 
-    // Normale flow
     // beladingsgraad
     let ratio = 0;
-    if (typeof options.load_fraction === "number") {
-      ratio = options.load_fraction;
-    } else if (typeof options.load_grade === "string") {
-      ratio = cfg.beladingsgraad?.[options.load_grade] ?? 0;
-    }
+    if (typeof options.load_fraction === "number") ratio = options.load_fraction;
+    else if (typeof options.load_grade === "string") ratio = cfg.beladingsgraad?.[options.load_grade] ?? 0;
     ratio = Math.max(0, Math.min(1, Number.isFinite(ratio) ? ratio : 0));
 
     // handling split
     const handlingSplit = calcHandlingSplit(cfg, options, ratio);
 
-    // kilometerkosten
+    // kilometers
     const linehaul = distance_km * (cfg.eur_per_km_base || 0) * (trailer.multiplier || 1);
 
     // km-heffing
@@ -237,13 +239,20 @@ export default async (request) => {
 
     // subtotalen
     const base = cfg.min_fee || 0;
-    const subtotal = base + linehaul + handlingSplit.costs.handling_total + km_levy + accessorials_fixed;
+    const handlingTotalInternal = handlingSplit.costs.handling_total_internal;
+    const subtotal = base + linehaul + handlingTotalInternal + km_levy + accessorials_fixed;
     const fuel = subtotal * (cfg.fuel_pct || 0);
     const zone_flat = (() => {
       const z = options.zone || "NL";
       return (cfg.zones?.[z]?.flat) || 0;
     })();
-    const total = Math.max(cfg.min_fee || 0, subtotal + fuel + zone_flat);
+
+    // korting gecombineerd (over preTotal incl. zone + fuel)
+    const preTotal = subtotal + fuel + zone_flat;
+    const discPct = cfg.combined_discount_pct ?? 0.2;
+    const discount = options.combined ? -(preTotal * discPct) : 0;
+
+    const total = Math.max(cfg.min_fee || 0, preTotal + discount);
 
     const payload = {
       inputs: {
@@ -253,24 +262,27 @@ export default async (request) => {
       },
       derived: {
         distance_km,
-        ...handlingSplit.hours // approach_hours, depart_hours, load_hours, unload_hours, total_hours, rate_used
+        ...handlingSplit.hours
       },
       breakdown: {
         base: Number(base.toFixed(2)),
         linehaul: Number(linehaul.toFixed(2)),
-        ...handlingSplit.costs, // handling_approach, handling_depart, handling_load, handling_unload, handling_total
+        handling_approach: handlingSplit.costs.handling_approach,
+        handling_depart:   handlingSplit.costs.handling_depart,
+        handling_load:     handlingSplit.costs.handling_load,
+        handling_unload:   handlingSplit.costs.handling_unload,
         km_levy: Number(km_levy.toFixed(2)),
         accessorials: Number(accessorials_fixed.toFixed(2)),
         fuel: Number(fuel.toFixed(2)),
-        zone_flat: Number(zone_flat.toFixed(2))
+        zone_flat: Number(zone_flat.toFixed(2)),
+        discount: Number(discount.toFixed(2)) // negatief bedrag
       },
       total: Number(total.toFixed(2)),
       currency: "EUR"
     };
 
     return new Response(JSON.stringify(payload), {
-      status: 200,
-      headers: { "content-type": "application/json" }
+      status: 200, headers: { "content-type": "application/json" }
     });
   } catch (e) {
     return new Response(JSON.stringify({ error: "Internal error", detail: String(e) }), {
