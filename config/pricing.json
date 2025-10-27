@@ -3,29 +3,6 @@
   "eur_per_km_base": 0.8,
   "fuel_pct": 0.18,
 
-  /* Hoe zwaar telt beladingsgraad mee op km-kosten (linehaul)? */
-  "load_factor": {
-    "one_pallet": 0.00,
-    "quarter": 0.35,         // maak 1/4 zwaarder (meer verschil): 0.50 i.p.v. 0.60
-    "half": 0.45,
-    "three_quarter": 0.60,
-    "full": 1.00,
-
-    /* fallback-bandjes als iemand een “vrij” percentage zou kiezen */
-    "fallback_0_25": 0.50,
-    "fallback_0_50": 0.75,
-    "fallback_0_75": 0.90,
-    "fallback_1_00": 1.00
-  },
-
-  /* Welke posten schalen mee, en hoeveel deel daarvan? (0 = niet, 1 = volledig) */
-  "load_shares": {
-    "linehaul": 1.0,        // km-kosten volledig met load_factor
-    "km_levy": 1.0,         // km-heffing (0.12/km) ook volledig mee laten schalen
-    "zone_flat": 0.50,      // zone-toeslag voor 50% mee laten schalen
-    "base_fee_share": 0.00  // desnoods deel van basistarief laten meeschalen (hier 0%)
-  },
-
   "handling": {
     "approach_min_hours": 0.5,
     "depart_min_hours": 0.5,
@@ -34,8 +11,8 @@
   },
 
   "km_levy": { "eur_per_km": 0.12 },
+
   "auto_crane": { "handling_rate_multiplier": 1.28 },
-  "combined_discount_pct": 0.20,
 
   "one_pallet_pricing": {
     "mode": "flat_per_distance",
@@ -52,7 +29,7 @@
   },
 
   "beladingsgraad": {
-    "one_pallet": 0.00,
+    "one_pallet": 0.05,
     "quarter": 0.25,
     "half": 0.5,
     "three_quarter": 0.75,
@@ -60,13 +37,19 @@
   },
 
   "trailers": {
-    "vlakke":    { "label": "Vlakke trailer",    "multiplier": 1.00 },
-    "uitschuif": { "label": "Uitschuif trailer", "multiplier": 1.10 },
-    "dieplader": { "label": "Dieplader",         "multiplier": 1.20 },
-    "tautliner": { "label": "Tautliner",         "multiplier": 1.05 }
+    "vlakke":     { "label": "Vlakke trailer",     "volume_m2": 33.0, "payload_kg": 24000, "multiplier": 1.00 },
+    "uitschuif":  { "label": "Uitschuif trailer",  "volume_m2": 33.0, "payload_kg": 23000, "multiplier": 1.10 },
+    "dieplader":  { "label": "Dieplader",          "volume_m2": 30.0, "payload_kg": 22000, "multiplier": 1.20 },
+    "tautliner":  { "label": "Tautliner",          "volume_m2": 33.0, "payload_kg": 24000, "multiplier": 1.05 }
   },
 
-  "zones": { "NL": { "flat": 0 } },
+  "zones": {
+    "NL": { "flat": 0 },
+    "BE": { "flat": 0 },
+    "DE": { "flat": 0 }
+  },
 
-  "accessorials": { "city_delivery": 0 }
+  "accessorials": {
+    "city_delivery": 0
+  }
 }
