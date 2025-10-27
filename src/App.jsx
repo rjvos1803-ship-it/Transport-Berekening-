@@ -16,11 +16,11 @@ const LABELS = {
   handling_depart: 'Afrijden',
   handling_load: 'Laden',
   handling_unload: 'Lossen',
-  handling_total: 'Totaal behandelingskosten',
   km_levy: 'Kilometerheffing',
   accessorials: 'Bijkosten',
   fuel: 'Brandstoftoeslag',
   zone_flat: 'Zonetoeslag',
+  discount: 'Korting gecombineerd transport'
 }
 
 const LOAD_OPTIONS = [
@@ -31,7 +31,7 @@ const LOAD_OPTIONS = [
   { key: 'full', label: 'Volle trailer', value: 1.0 },
 ]
 
-// volgorde waarin we de breakdown tonen
+// volgorde zonder "handling_total"
 const ORDER = [
   'base',
   'linehaul',
@@ -39,11 +39,11 @@ const ORDER = [
   'handling_depart',
   'handling_load',
   'handling_unload',
-  'handling_total',
   'km_levy',
   'accessorials',
   'fuel',
   'zone_flat',
+  'discount'
 ]
 
 export default function App() {
@@ -55,6 +55,7 @@ export default function App() {
     load_grade: 'quarter',
     city_delivery: false,
     autolaad_kraan: false,
+    combined: false,
     load: false,
     unload: false,
     km_levy: false,
@@ -77,6 +78,7 @@ export default function App() {
       load_grade: 'quarter',
       city_delivery: false,
       autolaad_kraan: false,
+      combined: false,
       load: false,
       unload: false,
       km_levy: false,
@@ -106,6 +108,7 @@ export default function App() {
           options: {
             city_delivery: form.city_delivery,
             autolaad_kraan: form.autolaad_kraan,
+            combined: form.combined,
             load: form.load,
             unload: form.unload,
             km_levy: form.km_levy,
@@ -139,7 +142,6 @@ export default function App() {
     })
   }
 
-  // helper: toon uren bij handlingregels
   const hoursSuffix = (key) => {
     if (!quote?.derived) return ''
     const d = quote.derived
@@ -147,7 +149,6 @@ export default function App() {
     if (key === 'handling_depart')   return ` (${d.depart_hours ?? 0} u)`
     if (key === 'handling_load')     return ` (${d.load_hours ?? 0} u)`
     if (key === 'handling_unload')   return ` (${d.unload_hours ?? 0} u)`
-    if (key === 'handling_total')    return ` (${d.total_hours ?? 0} u @ €${(d.rate_used ?? 0).toFixed(2)}/u)`
     return ''
   }
 
@@ -244,6 +245,10 @@ export default function App() {
                 <span>Autolaadkraan</span>
               </label>
               <label className="flex items-center gap-2 mb-1">
+                <input type="checkbox" name="combined" checked={form.combined} onChange={onChange} />
+                <span>Gecombineerd transport (20% korting)</span>
+              </label>
+              <label className="flex items-center gap-2 mb-1">
                 <input type="checkbox" name="load" checked={form.load} onChange={onChange} />
                 <span>Laden</span>
               </label>
@@ -265,26 +270,16 @@ export default function App() {
           )}
 
           <div className="flex flex-wrap gap-3">
-            <button
-              type="submit"
-              disabled={loading}
-              className="inline-flex items-center gap-2 bg-black text-white px-4 py-2 rounded-lg disabled:opacity-60"
-            >
+            <button type="submit" disabled={loading}
+              className="inline-flex items-center gap-2 bg-black text-white px-4 py-2 rounded-lg disabled:opacity-60">
               {loading ? 'Berekenen…' : 'Bereken tarief'}
             </button>
-            <button
-              type="button"
-              onClick={clearAll}
-              className="inline-flex items-center gap-2 bg-gray-700 text-white px-4 py-2 rounded-lg"
-            >
+            <button type="button" onClick={clearAll}
+              className="inline-flex items-center gap-2 bg-gray-700 text-white px-4 py-2 rounded-lg">
               Leegmaken
             </button>
-            <button
-              type="button"
-              onClick={downloadPDF}
-              disabled={!quote}
-              className="inline-flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-lg disabled:opacity-60"
-            >
+            <button type="button" onClick={downloadPDF} disabled={!quote}
+              className="inline-flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-lg disabled:opacity-60">
               Download PDF
             </button>
           </div>
@@ -314,15 +309,18 @@ export default function App() {
 
             <div className="grid sm:grid-cols-2 gap-2 mt-3">
               {ORDER.map((k) => {
-                if (quote.breakdown[k] == null) return null
-                const label = LABELS[k] ?? k
-                const hours = hoursSuffix(k)
+                const v = quote.breakdown?.[k];
+                if (v == null || Math.abs(Number(v)) < 0.005) return null; // skip 0
+                const label = LABELS[k] ?? k;
+                const hours = ['handling_approach','handling_depart','handling_load','handling_unload'].includes(k) ? 
+                  (k==='handling_approach' ? ` (${quote.derived.approach_hours} u)` :
+                   k==='handling_depart'   ? ` (${quote.derived.depart_hours} u)` :
+                   k==='handling_load'     ? ` (${quote.derived.load_hours} u)` :
+                                             ` (${quote.derived.unload_hours} u)`) : '';
                 return (
                   <div key={k} className="flex justify-between text-sm">
-                    <span className="text-gray-600">
-                      {label}{hours}
-                    </span>
-                    <span className="font-medium">€ {Number(quote.breakdown[k]).toFixed(2)}</span>
+                    <span className="text-gray-600">{label}{hours}</span>
+                    <span className="font-medium">€ {Number(v).toFixed(2)}</span>
                   </div>
                 )
               })}
