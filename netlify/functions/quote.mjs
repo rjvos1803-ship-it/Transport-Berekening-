@@ -34,7 +34,7 @@ const DEFAULT_CFG = {
     include_km_levy: true
   },
   beladingsgraad: {
-    one_pallet: 0.05, quarter: 0.25, half: 0.5, three_quarter: 0.75, full: 1.0
+    one_pallet: 0.05, quarter: 0.35, half: 0.6, three_quarter: 0.80, full: 1.0
   },
   trailers: {
     vlakke:    { label: "Vlakke trailer",    multiplier: 1.00 },
@@ -81,7 +81,7 @@ function calcHandlingSplit(cfg, options, ratio) {
   const depart_min   = h.depart_min_hours   ?? 0.5;
   const per_op_full  = h.full_trailer_load_unload_hours ?? 1.5;
 
-  const baseRate  = h.rate_per_hour ?? 92.5;
+  const baseRate  = h.rate_per_hour ?? 94.5;
   const craneMult = options.autolaad_kraan ? (cfg.auto_crane?.handling_rate_multiplier ?? 1.28) : 1;
   const rate = baseRate * craneMult;
 
