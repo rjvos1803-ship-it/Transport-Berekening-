@@ -31,9 +31,9 @@
 
   "beladingsgraad": {
     "one_pallet": 0.05,
-    "quarter": 0.35,
-    "half": 0.62,
-    "three_quarter": 0.82,
+    "quarter": 0.42,
+    "half": 0.70,
+    "three_quarter": 0.86,
     "full": 1.0
   },
 
