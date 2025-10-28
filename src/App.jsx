@@ -12,7 +12,6 @@ const LABELS = {
   handling_depart: "Afrijden",
   handling_load_unload: "Laden/Lossen",
   km_levy: "Kilometerheffing",
-  accessorials: "Bijkosten",
   zone_flat: "Zonetoeslag",
   discount: "Korting gecombineerd transport"
 };
@@ -29,13 +28,12 @@ export default function App() {
     to: "",
     trailer_type: "vlakke",
     load_grade: "full",
+    // exclusieve keuze: geen / intern / extern
+    load_choice: "none",
     options: {
-      city_delivery: false,
       autolaad_kraan: false,
       combined: false,
-      km_levy: false,
-      load_unload_internal: false,
-      load_unload_external: false
+      km_levy: false
     }
   });
 
@@ -64,40 +62,33 @@ export default function App() {
   }
 
   function onToggleOption(key) {
-    setForm((f) => {
-      const opts = { ...f.options, [key]: !f.options[key] };
-      // exclusiviteit: extern > intern (niet beiden tegelijk)
-      if (key === "load_unload_external" && !f.options[key]) {
-        opts.load_unload_internal = false;
-      }
-      if (key === "load_unload_internal" && !f.options[key]) {
-        opts.load_unload_external = false;
-      }
-      return { ...f, options: opts };
-    });
+    setForm((f) => ({ ...f, options: { ...f.options, [key]: !f.options[key] } }));
+  }
+
+  function onLoadChoice(e) {
+    const v = e.target.value; // "none" | "internal" | "external"
+    setForm((f) => ({ ...f, load_choice: v }));
   }
 
   async function onQuote(e) {
     e?.preventDefault?.();
     setError("");
-    if (!form.reference.trim()) {
-      setError("Vul een referentie in (verplicht).");
-      return;
-    }
-    if (!form.from.trim() || !form.to.trim()) {
-      setError("Vul zowel Van als Naar in.");
-      return;
-    }
+    if (!form.reference.trim()) return setError("Vul een referentie in (verplicht).");
+    if (!form.from.trim() || !form.to.trim()) return setError("Vul zowel Van als Naar in.");
+
     try {
       setBusy(true);
+      const opts = {
+        ...form.options,
+        load_grade: form.load_grade,
+        load_unload_internal: form.load_choice === "internal",
+        load_unload_external: form.load_choice === "external"
+      };
       const payload = {
         from: form.from,
         to: form.to,
         trailer_type: form.trailer_type,
-        options: {
-          ...form.options,
-          load_grade: form.load_grade
-        }
+        options: opts
       };
       const res = await fetch(API_URL, {
         method: "POST",
@@ -123,14 +114,8 @@ export default function App() {
       to: "",
       trailer_type: "vlakke",
       load_grade: "full",
-      options: {
-        city_delivery: false,
-        autolaad_kraan: false,
-        combined: false,
-        km_levy: false,
-        load_unload_internal: false,
-        load_unload_external: false
-      }
+      load_choice: "none",
+      options: { autolaad_kraan: false, combined: false, km_levy: false }
     });
   }
 
@@ -144,35 +129,30 @@ export default function App() {
     });
   }
 
-  // Bouw de tabelregels voor weergave (UI)
+  // Bouw tabelregels voor weergave (UI)
   function buildVisibleRows(breakdown = {}) {
     const rows = [];
 
-    // Laden/Lossen combineren
+    // Laden/Lossen combineren als één regel (kosten)
     const loadUnload = Number(breakdown.handling_load || 0) + Number(breakdown.handling_unload || 0);
-    if (Math.abs(loadUnload) >= 0.005) {
-      rows.push(["handling_load_unload", loadUnload]);
-    }
+    if (Math.abs(loadUnload) >= 0.005) rows.push(["handling_load_unload", loadUnload]);
 
-    // Aanrijden
+    // Aanrijden / Afrijden
     if (Math.abs(Number(breakdown.handling_approach || 0)) >= 0.005) {
       rows.push(["handling_approach", breakdown.handling_approach]);
     }
-
-    // Afrijden
     if (Math.abs(Number(breakdown.handling_depart || 0)) >= 0.005) {
       rows.push(["handling_depart", breakdown.handling_depart]);
     }
 
-    // Overige reguliere posten (filter op verborgen + 0,00)
+    // Overige posten (filter base/linehaul/fuel + 0,00)
     for (const [k, v] of Object.entries(breakdown)) {
-      if (HIDDEN_KEYS.has(k)) continue; // verberg base/linehaul/fuel
-      if (k.startsWith("handling_")) continue; // deze deden we al
+      if (HIDDEN_KEYS.has(k)) continue;
+      if (k.startsWith("handling_")) continue;
       if (Math.abs(Number(v || 0)) < 0.005) continue;
       rows.push([k, v]);
     }
 
-    // Label mapping
     return rows.map(([k, v]) => [LABELS[k] || k, Number(v)]);
   }
 
@@ -186,7 +166,9 @@ export default function App() {
         <form onSubmit={onQuote} className="grid gap-4 bg-white p-4 rounded-xl shadow">
           <div className="grid sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium mb-1">Referentie <span className="text-rose-600">*</span></label>
+              <label className="block text-sm font-medium mb-1">
+                Referentie <span className="text-rose-600">*</span>
+              </label>
               <input
                 className="w-full border rounded px-3 py-2"
                 name="reference"
@@ -268,6 +250,44 @@ export default function App() {
             </div>
           </div>
 
+          {/* Exclusieve keuze intern/extern */}
+          <fieldset className="grid sm:grid-cols-3 gap-2">
+            <legend className="text-sm font-medium mb-1">Laden/lossen locatie (kies één)</legend>
+
+            <label className="flex items-center gap-2">
+              <input
+                type="radio"
+                name="load_choice"
+                value="none"
+                checked={form.load_choice === "none"}
+                onChange={onLoadChoice}
+              />
+              <span>Geen specifieke optie</span>
+            </label>
+
+            <label className="flex items-center gap-2">
+              <input
+                type="radio"
+                name="load_choice"
+                value="internal"
+                checked={form.load_choice === "internal"}
+                onChange={onLoadChoice}
+              />
+              <span>Interne locatie</span>
+            </label>
+
+            <label className="flex items-center gap-2">
+              <input
+                type="radio"
+                name="load_choice"
+                value="external"
+                checked={form.load_choice === "external"}
+                onChange={onLoadChoice}
+              />
+              <span>Externe locatie</span>
+            </label>
+          </fieldset>
+
           <fieldset className="grid sm:grid-cols-3 gap-2">
             <legend className="text-sm font-medium mb-1">Opties</legend>
 
@@ -297,35 +317,6 @@ export default function App() {
               />
               <span>Kilometerheffing</span>
             </label>
-
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={form.options.city_delivery}
-                onChange={() => onToggleOption("city_delivery")}
-              />
-              <span>Binnenstad</span>
-            </label>
-
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={form.options.load_unload_internal}
-                onChange={() => onToggleOption("load_unload_internal")}
-                disabled={form.options.load_unload_external}
-              />
-              <span>Laden/lossen interne locatie</span>
-            </label>
-
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={form.options.load_unload_external}
-                onChange={() => onToggleOption("load_unload_external")}
-                disabled={form.options.load_unload_internal}
-              />
-              <span>Laden/lossen externe locatie</span>
-            </label>
           </fieldset>
 
           {!!error && (
@@ -354,7 +345,7 @@ export default function App() {
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <tbody>
-                    {visibleRows.map(([label, value]) => (
+                    {buildVisibleRows(quote?.breakdown).map(([label, value]) => (
                       <tr key={label} className="border-b last:border-b-0">
                         <td className="py-2 pr-3">{label}</td>
                         <td className="py-2 pl-3 text-right font-semibold">{eur(value)}</td>
@@ -368,6 +359,17 @@ export default function App() {
                     </tr>
                   </tbody>
                 </table>
+              </div>
+
+              {/* Urenoverzicht tonen (zoals gevraagd) */}
+              <div className="mt-4 text-sm text-neutral-700">
+                <div className="font-medium mb-1">Urenoverzicht</div>
+                <ul className="grid sm:grid-cols-4 gap-2">
+                  <li>Aanrijden: <strong>{quote?.derived?.approach_hours ?? 0} u</strong></li>
+                  <li>Laden: <strong>{quote?.derived?.load_hours ?? 0} u</strong></li>
+                  <li>Lossen: <strong>{quote?.derived?.unload_hours ?? 0} u</strong></li>
+                  <li>Afrijden: <strong>{quote?.derived?.depart_hours ?? 0} u</strong></li>
+                </ul>
               </div>
 
               <div className="mt-4 flex gap-2">
