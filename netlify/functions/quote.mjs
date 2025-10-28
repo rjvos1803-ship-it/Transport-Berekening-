@@ -16,11 +16,11 @@ const DEFAULT_CFG = {
     approach_min_hours: 0.5,  // altijd
     depart_min_hours: 0.5,    // extern 0.5u, intern 0.0u
     full_trailer_load_unload_hours: 1.5, // vrije scenario max per handeling
-    rate_per_hour: 92.5
+    rate_per_hour: 94.5
   },
   km_levy: { eur_per_km: 0.12 },
   auto_crane: { handling_rate_multiplier: 1.28 },
-  combined_discount_pct: 0.20,
+  combined_discount_pct: 0.15,
   one_pallet_pricing: {
     mode: "flat_per_distance",
     tiers: [
@@ -34,7 +34,7 @@ const DEFAULT_CFG = {
     include_km_levy: true
   },
   beladingsgraad: {
-    one_pallet: 0.05, quarter: 0.35, half: 0.6, three_quarter: 0.80, full: 1.0
+    one_pallet: 0.05, quarter: 0.4, half: 0.65, three_quarter: 0.85, full: 1.0
   },
   trailers: {
     vlakke:    { label: "Vlakke trailer",    multiplier: 1.00 },
