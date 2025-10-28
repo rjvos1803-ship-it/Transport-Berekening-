@@ -1,21 +1,21 @@
 // netlify/functions/quote.mjs
-// - Beladingsgraad lineair op linehaul (0.25/0.5/0.75/1.0)
-// - "1× pallet" vaste prijzen (110 / 150 / 225) -> negeert beladingsgraad
-// - Binnenstad verwijderd (niet rekenen, niet tonen)
-// - Interne/externe laden/lossen exclusief; vaste tijden zoals afgesproken
-// - Linehaul & fuel wel rekenen, niet tonen (UI/PDF doen verbergen)
+// - Beladingsgraad lineair op km-kosten (¼=0.25, ½=0.5, …)
+// - Laden/lossen schalen mee met beladingsgraad (ook bij intern/extern)
+// - 1× pallet vaste prijzen (110 / 150 / 225), negeert beladingsgraad
+// - Binnenstad verwijderd
+// - base/linehaul/fuel worden wel berekend, maar UI/PDF verbergen ze
 
 import fs from "fs/promises";
 import path from "path";
 
 const DEFAULT_CFG = {
-  min_fee: 0.0,               // op verzoek tijdelijk 0.00; later in config aan te passen
+  min_fee: 0.0,               // op verzoek op 0.00
   eur_per_km_base: 0.8,
   fuel_pct: 0.18,
   handling: {
-    approach_min_hours: 0.5,
-    depart_min_hours: 0.5,
-    full_trailer_load_unload_hours: 1.5,
+    approach_min_hours: 0.5,  // altijd
+    depart_min_hours: 0.5,    // extern 0.5u, intern 0.0u
+    full_trailer_load_unload_hours: 1.5, // vrije scenario max per handeling
     rate_per_hour: 92.5
   },
   km_levy: { eur_per_km: 0.12 },
@@ -39,7 +39,7 @@ const DEFAULT_CFG = {
   trailers: {
     vlakke:    { label: "Vlakke trailer",    multiplier: 1.00 },
     uitschuif: { label: "Uitschuif trailer", multiplier: 1.10 },
-    dieplader: { label: "Dieplader",         multiplier: 1.20 },
+    dieplader: { label: "Dieplader",         "multiplier": 1.20 },
     tautliner: { label: "Tautliner",         multiplier: 1.05 }
   },
   zones: { NL: { flat: 0 } }
@@ -74,13 +74,7 @@ const GEOCODER = {
   }
 };
 
-// Handling-uren/-kosten:
-// - Altijd aanrijden (min 0,5 u).
-// - Intern: géén afrijden (0 u), laden 1.0 u + lossen 1.0 u.
-// - Extern: afrijden 0,5 u, laden 1,5 u + lossen 1,5 u.
-// - Anders: laden/lossen ieder 1,5 u * beladingsgraad.
-// - Autolaadkraan: +28% op uurtarief.
-// - Extern > intern als beide flags binnenkomen (exclusiviteit gewaarborgd).
+// Handling-uren/-kosten met beladingsgraad op laad/lostijd (ook bij interne/externe):
 function calcHandlingSplit(cfg, options, ratio) {
   const h = cfg.handling || {};
   const approach_min = h.approach_min_hours ?? 0.5;
@@ -91,21 +85,30 @@ function calcHandlingSplit(cfg, options, ratio) {
   const craneMult = options.autolaad_kraan ? (cfg.auto_crane?.handling_rate_multiplier ?? 1.28) : 1;
   const rate = baseRate * craneMult;
 
+  // Exclusieve keuze, extern > intern
   const external = !!options.load_unload_external;
   const internal = !external && !!options.load_unload_internal;
 
-  let approach_h = approach_min;
-  let depart_h   = external ? depart_min : (internal ? 0 : depart_min);
+  // Aan-/afrijden (niet met beladingsgraad schalen)
+  const approach_h = approach_min;
+  const depart_h   = external ? depart_min : (internal ? 0 : depart_min);
 
-  let load_h, unload_h;
+  // Laden/lossen: MAX-tijd per scenario × beladingsgraad
+  let max_load, max_unload;
   if (internal) {
-    load_h = 1.0; unload_h = 1.0;
+    max_load = 1.0;   // intern max 1,0 u per handeling
+    max_unload = 1.0;
   } else if (external) {
-    load_h = 1.5; unload_h = 1.5;
+    max_load = 1.5;   // extern max 1,5 u per handeling
+    max_unload = 1.5;
   } else {
-    load_h = per_op_full * ratio;
-    unload_h = per_op_full * ratio;
+    max_load = per_op_full;   // vrij scenario: 1,5 u per handeling
+    max_unload = per_op_full;
   }
+
+  const r = Math.max(0, Math.min(1, Number(ratio) || 0));
+  const load_h   = (max_load   * r) || 0;
+  const unload_h = (max_unload * r) || 0;
 
   const handling_approach = approach_h * rate;
   const handling_depart   = depart_h   * rate;
