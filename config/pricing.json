@@ -14,7 +14,7 @@
 
   "auto_crane": { "handling_rate_multiplier": 1.28 },
 
-  "combined_discount_pct": 0.20,
+  "combined_discount_pct": 0.10,
 
   "one_pallet_pricing": {
     "mode": "flat_per_distance",
