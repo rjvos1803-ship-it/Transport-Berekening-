@@ -1,6 +1,6 @@
 // src/lib/pdfutil.js
-// Strakke PDF: verberg base/linehaul/fuel, sla €0,00-regels en lege secties over,
-// nette header met logo en referentie.
+// PDF toont: afstand (km) + urenoverzicht (aanrijden/laden/lossen/afrijden).
+// Kosten-secties: verberg base/linehaul/fuel; sla €0,00-regels en lege secties over.
 
 function eur(n) {
   return `€ ${Number(n ?? 0).toFixed(2)}`;
@@ -22,7 +22,7 @@ async function loadImageAsDataURL(url) {
   } catch { return null; }
 }
 
-// verberg deze posten in PDF
+// verberg in PDF:
 const HIDDEN_KEYS = new Set(["base", "linehaul", "fuel"]);
 
 export async function exportQuoteToPDF(quote, meta = {}) {
@@ -77,7 +77,6 @@ export async function exportQuoteToPDF(quote, meta = {}) {
 
   const opt = quote?.inputs?.options || {};
   const optsTxt = [
-    opt.city_delivery ? "Binnenstad" : null,
     opt.autolaad_kraan ? "Autolaadkraan" : null,
     opt.combined ? "Gecombineerd transport (20% korting)" : null,
     opt.load_unload_internal ? "Laden/lossen interne locatie" : null,
@@ -86,43 +85,52 @@ export async function exportQuoteToPDF(quote, meta = {}) {
   ].filter(Boolean).join(", ") || "-";
   addLabelValue(doc, "Opties:", optsTxt, margin, y); y += 8;
 
-  // Resultaat (kop)
+  // Resultaat header + afstand
   doc.setFont("helvetica", "bold"); doc.setFontSize(12); doc.text("Resultaat", margin, y); y += 5;
   doc.setFont("helvetica", "normal"); doc.setFontSize(10);
   addLabelValue(doc, "Afstand:", `${quote?.derived?.distance_km ?? 0} km`, margin, y);
   y += 8;
 
-  // Labels voor zichtbare posten
+  // Urenoverzicht (altijd tonen)
+  doc.setFont("helvetica", "bold"); doc.setFontSize(12); doc.text("Urenoverzicht", margin, y); y += 6;
+  doc.setFont("helvetica", "normal"); doc.setFontSize(10);
+  addLabelValue(doc, "Aanrijden:", `${quote?.derived?.approach_hours ?? 0} u`, margin, y); y += 6;
+  addLabelValue(doc, "Laden:", `${quote?.derived?.load_hours ?? 0} u`, margin, y); y += 6;
+  addLabelValue(doc, "Lossen:", `${quote?.derived?.unload_hours ?? 0} u`, margin, y); y += 6;
+  addLabelValue(doc, "Afrijden:", `${quote?.derived?.depart_hours ?? 0} u`, margin, y); y += 10;
+
+  // Kosten-secties (base/linehaul/fuel verborgen)
   const labels = {
     handling_approach: "Aanrijden",
     handling_depart: "Afrijden",
-    handling_load_unload: "Laden/Lossen",
+    handling_load: "Laden",
+    handling_unload: "Lossen",
     km_levy: "Kilometerheffing",
-    accessorials: "Bijkosten",
     zone_flat: "Zonetoeslag",
     discount: "Korting gecombineerd transport"
   };
 
-  // Bouw zichtbare items (handling load+unload samenvoegen)
   const bd = quote?.breakdown || {};
-  const items = [];
+  const costItems = [];
 
-  const loadUnload = Number(bd.handling_load || 0) + Number(bd.handling_unload || 0);
-  if (Math.abs(loadUnload) >= 0.005) items.push(["handling_load_unload", loadUnload]);
+  // Handling kosten (los tonen voor transparantie)
+  if (Math.abs(Number(bd.handling_approach || 0)) >= 0.005) costItems.push(["handling_approach", bd.handling_approach]);
+  if (Math.abs(Number(bd.handling_load || 0)) >= 0.005)     costItems.push(["handling_load", bd.handling_load]);
+  if (Math.abs(Number(bd.handling_unload || 0)) >= 0.005)   costItems.push(["handling_unload", bd.handling_unload]);
+  if (Math.abs(Number(bd.handling_depart || 0)) >= 0.005)   costItems.push(["handling_depart", bd.handling_depart]);
 
-  if (Math.abs(Number(bd.handling_approach || 0)) >= 0.005) items.push(["handling_approach", bd.handling_approach]);
-  if (Math.abs(Number(bd.handling_depart || 0)) >= 0.005)   items.push(["handling_depart", bd.handling_depart]);
-
+  // Overige kosten
   for (const [k, v] of Object.entries(bd)) {
     if (HIDDEN_KEYS.has(k)) continue;                // verberg base/linehaul/fuel
-    if (k.startsWith("handling_")) continue;         // reeds verwerkt
+    if (k.startsWith("handling_")) continue;         // al verwerkt
     if (Math.abs(Number(v || 0)) < 0.005) continue;  // skip 0-regels
-    items.push([k, v]);
+    costItems.push([k, v]);
   }
 
-  // Alleen renderen als er echt regels zijn
-  if (items.length) {
-    for (const [k, v] of items) {
+  if (costItems.length) {
+    doc.setFont("helvetica", "bold"); doc.setFontSize(12); doc.text("Kostenoverzicht", margin, y); y += 6;
+    doc.setFont("helvetica", "normal"); doc.setFontSize(10);
+    for (const [k, v] of costItems) {
       if (y > 270) { doc.addPage(); y = margin; }
       const isDiscount = k === "discount" && Number(v) < 0;
       doc.setTextColor(0, 0, 0);
