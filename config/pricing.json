@@ -3,6 +3,8 @@
   "eur_per_km_base": 0.8,
   "fuel_pct": 0.18,
 
+  "depot_address": "Coatinc Alblasserdam",
+
   "handling": {
     "approach_min_hours": 1.0,
     "depart_min_hours": 0.5,
