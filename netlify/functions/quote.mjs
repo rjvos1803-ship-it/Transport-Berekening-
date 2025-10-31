@@ -1,26 +1,27 @@
 // netlify/functions/quote.mjs
-// - Beladingsgraad lineair op km-kosten (¼=0.25, ½=0.5, …)
-// - Laden/lossen schalen mee met beladingsgraad (ook bij intern/extern)
-// - 1× pallet vaste prijzen (110 / 150 / 225), negeert beladingsgraad
-// - Binnenstad verwijderd
-// - base/linehaul/fuel worden wel berekend, maar UI/PDF verbergen ze
+// - Aanrijtijd = Google Directions duur (uren) vanaf depot -> VAN (min. ondergrens)
+// - Afrijden: extern 0.5u / intern 0.0u
+// - Beladingsgraad schaalt linehaul + laad/lostijden
+// - 1× pallet vaste prijzen 110/150/225
+// - base/linehaul/fuel worden berekend maar UI/PDF verbergen ze
 
 import fs from "fs/promises";
 import path from "path";
 
 const DEFAULT_CFG = {
-  min_fee: 0.0,               // op verzoek op 0.00
+  min_fee: 0.0,
   eur_per_km_base: 0.8,
   fuel_pct: 0.18,
+  depot_address: "Coatinc Alblasserdam",
   handling: {
-    approach_min_hours: 0.5,  // altijd
-    depart_min_hours: 0.5,    // extern 0.5u, intern 0.0u
-    full_trailer_load_unload_hours: 1.5, // vrije scenario max per handeling
-    rate_per_hour: 94.5
+    approach_min_hours: 0.5,          // min. aanrijden
+    depart_min_hours: 0.5,            // wordt 0.5u extern / 0.0u intern
+    full_trailer_load_unload_hours: 1.5,
+    rate_per_hour: 92.5
   },
   km_levy: { eur_per_km: 0.12 },
   auto_crane: { handling_rate_multiplier: 1.28 },
-  combined_discount_pct: 0.15,
+  combined_discount_pct: 0.20,
   one_pallet_pricing: {
     mode: "flat_per_distance",
     tiers: [
@@ -34,12 +35,12 @@ const DEFAULT_CFG = {
     include_km_levy: true
   },
   beladingsgraad: {
-    one_pallet: 0.05, quarter: 0.4, half: 0.65, three_quarter: 0.85, full: 1.0
+    one_pallet: 0.05, quarter: 0.25, half: 0.5, three_quarter: 0.75, full: 1.0
   },
   trailers: {
-    vlakke:    { label: "Vlakke trailer",    multiplier: 1.00 },
-    uitschuif: { label: "Uitschuif trailer", multiplier: 1.10 },
-    dieplader: { label: "Dieplader",         "multiplier": 1.20 },
+    vlakke:    { label: "Vlakke trailer",    multiplier: 1.0 },
+    uitschuif: { label: "Uitschuif trailer", multiplier: 1.1 },
+    dieplader: { label: "Dieplader",         multiplier: 1.2 },
     tautliner: { label: "Tautliner",         multiplier: 1.05 }
   },
   zones: { NL: { flat: 0 } }
@@ -56,10 +57,9 @@ async function loadConfig() {
 }
 
 const GEOCODER = {
-  async distanceKm(from, to) {
+  async _directions(from, to) {
     const key = process.env.GOOGLE_MAPS_API_KEY;
     if (!key) throw new Error("GOOGLE_MAPS_API_KEY ontbreekt in environment variables");
-
     const params = new URLSearchParams({
       origin: from, destination: to, units: "metric", language: "nl", key
     });
@@ -69,19 +69,31 @@ const GEOCODER = {
     if (data.status !== "OK" || !data.routes?.[0]?.legs?.length) {
       throw new Error(`Directions API fout: ${data.status || "geen route"}`);
     }
-    const meters = data.routes[0].legs.reduce((s, l) => s + (l.distance?.value || 0), 0);
+    return data.routes[0].legs;
+  },
+
+  async distanceKm(from, to) {
+    const legs = await this._directions(from, to);
+    const meters = legs.reduce((s, l) => s + (l.distance?.value || 0), 0);
     return Math.max(1, Math.round(meters / 1000));
+  },
+
+  async durationHours(from, to) {
+    const legs = await this._directions(from, to);
+    const seconds = legs.reduce((s, l) => s + (l.duration?.value || 0), 0);
+    return seconds / 3600; // uren
   }
 };
 
-// Handling-uren/-kosten met beladingsgraad op laad/lostijd (ook bij interne/externe):
-function calcHandlingSplit(cfg, options, ratio) {
+// Handling-uren/-kosten met beladingsgraad op laad/lostijd (ook bij interne/externe)
+// approach_override_hours: indien meegegeven, gebruik dat i.p.v. min (maar nooit lager dan min)
+function calcHandlingSplit(cfg, options, ratio, approach_override_hours = null) {
   const h = cfg.handling || {};
   const approach_min = h.approach_min_hours ?? 0.5;
   const depart_min   = h.depart_min_hours   ?? 0.5;
   const per_op_full  = h.full_trailer_load_unload_hours ?? 1.5;
 
-  const baseRate  = h.rate_per_hour ?? 94.5;
+  const baseRate  = h.rate_per_hour ?? 92.5;
   const craneMult = options.autolaad_kraan ? (cfg.auto_crane?.handling_rate_multiplier ?? 1.28) : 1;
   const rate = baseRate * craneMult;
 
@@ -89,23 +101,22 @@ function calcHandlingSplit(cfg, options, ratio) {
   const external = !!options.load_unload_external;
   const internal = !external && !!options.load_unload_internal;
 
-  // Aan-/afrijden (niet met beladingsgraad schalen)
-  const approach_h = approach_min;
-  const depart_h   = external ? depart_min : (internal ? 0 : depart_min);
+  // Aanrijden op basis van depot -> VAN
+  const approach_h_raw = approach_override_hours != null ? Number(approach_override_hours) : approach_min;
+  const approach_h = Math.max(approach_min, isFinite(approach_h_raw) ? approach_h_raw : approach_min);
 
-  // Laden/lossen: MAX-tijd per scenario × beladingsgraad
+  // Afrijden
+  const depart_h = external ? depart_min : (internal ? 0 : depart_min);
+
+  // Laden/Lossen max per scenario × beladingsgraad
   let max_load, max_unload;
   if (internal) {
-    max_load = 1.0;   // intern max 1,0 u per handeling
-    max_unload = 1.0;
+    max_load = 1.0; max_unload = 1.0;
   } else if (external) {
-    max_load = 1.5;   // extern max 1,5 u per handeling
-    max_unload = 1.5;
+    max_load = 1.5; max_unload = 1.5;
   } else {
-    max_load = per_op_full;   // vrij scenario: 1,5 u per handeling
-    max_unload = per_op_full;
+    max_load = per_op_full; max_unload = per_op_full;
   }
-
   const r = Math.max(0, Math.min(1, Number(ratio) || 0));
   const load_h   = (max_load   * r) || 0;
   const unload_h = (max_unload * r) || 0;
@@ -143,7 +154,7 @@ function calcOnePalletFlat(cfg, distance_km, options) {
     if (distance_km <= t.max_km) { price = t.price; break; }
   }
 
-  // 1× pallet: standaard geen handling/fuel, wel km_levy (indien aangevinkt)
+  // standaard geen handling/fuel, wel km_levy (indien aangevinkt)
   let handlingSplit = {
     hours: { approach_hours:0, depart_hours:0, load_hours:0, unload_hours:0, total_hours:0, rate_used: (cfg.handling?.rate_per_hour ?? 92.5) },
     costs: { handling_approach:0, handling_depart:0, handling_load:0, handling_unload:0, handling_total_internal:0 }
@@ -195,17 +206,22 @@ export default async (request) => {
     }
 
     const cfg = await loadConfig();
-    const distance_km = await GEOCODER.distanceKm(from, to);
     const trailer = cfg.trailers[trailer_type] || cfg.trailers.vlakke;
 
-    // Exclusiviteit (server): extern > intern
+    const distance_km = await GEOCODER.distanceKm(from, to);
+
+    // Exclusiviteit server-side (extern > intern)
     const optionsSafe = {
       ...options,
       load_unload_external: !!options.load_unload_external,
       load_unload_internal: !!options.load_unload_external ? false : !!options.load_unload_internal
     };
 
-    // 1× pallet fixed?
+    // Aanrijtijd vanaf depot -> VAN-adres
+    const depot = cfg.depot_address || "Coatinc Alblasserdam";
+    const approach_hours_from_depot = await GEOCODER.durationHours(depot, from);
+
+    // 1× pallet?
     const isOnePallet =
       optionsSafe.load_grade === "one_pallet" ||
       (typeof optionsSafe.load_fraction === "number" && optionsSafe.load_fraction <= 0.06);
@@ -232,19 +248,20 @@ export default async (request) => {
     else if (typeof optionsSafe.load_grade === "string") ratio = cfg.beladingsgraad?.[optionsSafe.load_grade] ?? 0;
     ratio = Math.max(0, Math.min(1, Number.isFinite(ratio) ? ratio : 0));
 
-    const handlingSplit = calcHandlingSplit(cfg, optionsSafe, ratio);
+    // Handling met override voor aanrijtijd vanaf depot
+    const handlingSplit = calcHandlingSplit(cfg, optionsSafe, ratio, approach_hours_from_depot);
 
-    // Lineaire km-kosten (beïnvloed door beladingsgraad)
+    // Linehaul lineair met beladingsgraad
     const linehaul = distance_km * (cfg.eur_per_km_base || 0) * (trailer.multiplier || 1) * ratio;
 
-    // km-heffing (niet schalen met ratio)
+    // km-heffing (niet met ratio)
     const km_levy = optionsSafe.km_levy ? (cfg.km_levy?.eur_per_km ?? 0.12) * distance_km : 0;
 
     // subtotalen
     const base = cfg.min_fee || 0;
     const handlingTotalInternal = handlingSplit.costs.handling_total_internal;
     const subtotal = base + linehaul + handlingTotalInternal + km_levy;
-    const fuel = subtotal * (cfg.fuel_pct || 0); // WEL rekenen
+    const fuel = subtotal * (cfg.fuel_pct || 0); // wel rekenen
     const zone_flat = (cfg.zones?.NL?.flat || 0);
 
     const preTotal = subtotal + fuel + zone_flat;
