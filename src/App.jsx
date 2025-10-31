@@ -75,7 +75,6 @@ export default function App() {
   async function onQuote(e) {
     e?.preventDefault?.();
     setError("");
-    if (!form.reference.trim()) return setError("Vul een referentie in (verplicht).");
     if (!form.from.trim() || !form.to.trim()) return setError("Vul zowel Van als Naar in.");
 
     try {
@@ -169,7 +168,7 @@ export default function App() {
           <div className="grid sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium mb-1">
-                Referentie <span className="text-rose-600">*</span>
+                Referentie 
               </label>
               <input
                 className="w-full border rounded px-3 py-2"
@@ -177,7 +176,6 @@ export default function App() {
                 value={form.reference}
                 onChange={onChange}
                 placeholder="Offerte / orderreferentie"
-                required
               />
             </div>
             <div />
