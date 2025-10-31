@@ -39,9 +39,9 @@
 
   "trailers": {
     "vlakke":    { "label": "Vlakke trailer",    "multiplier": 1.0 },
-    "uitschuif": { "label": "Uitschuif trailer", "multiplier": 1.1 },
+    "uitschuif": { "label": "Uitschuif trailer", "multiplier": 1.2 },
     "dieplader": { "label": "Dieplader",         "multiplier": 1.2 },
-    "tautliner": { "label": "Tautliner",         "multiplier": 1.05 }
+    "tautliner": { "label": "Tautliner",         "multiplier": 1.2 }
   },
 
   "zones": { "NL": { "flat": 0 } }
