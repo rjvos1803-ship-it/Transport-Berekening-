@@ -1,12 +1,13 @@
+// src/App.jsx
 import { useState } from "react";
 import { exportQuoteToPDF } from "./lib/pdfutil";
 
 const API_URL = "/.netlify/functions/quote";
 
-// Verberg deze posten in UI (wel meegerekend server-side)
+// verberg deze posten (wel meegerekend server-side)
 const HIDDEN_KEYS = new Set(["base", "linehaul", "fuel"]);
 
-// Labels voor de breakdown-keys (wat je wél toont)
+// labels voor zichtbare posten
 const LABELS = {
   handling_approach: "Aanrijden",
   handling_depart: "Afrijden",
@@ -28,10 +29,11 @@ export default function App() {
     to: "",
     trailer_type: "vlakke",
     load_grade: "full",
-    // exclusieve keuze: geen / intern / extern
-    load_choice: "none",
+    // exclusieve keuze in de UI (nu alleen 'internal' of 'external')
+    load_choice: "external",
     options: {
       autolaad_kraan: false,
+      // combined weggehaald uit UI; laten we default op false
       combined: false,
       km_levy: false
     }
@@ -66,7 +68,7 @@ export default function App() {
   }
 
   function onLoadChoice(e) {
-    const v = e.target.value; // "none" | "internal" | "external"
+    const v = e.target.value; // "internal" | "external"
     setForm((f) => ({ ...f, load_choice: v }));
   }
 
@@ -114,7 +116,7 @@ export default function App() {
       to: "",
       trailer_type: "vlakke",
       load_grade: "full",
-      load_choice: "none",
+      load_choice: "external",
       options: { autolaad_kraan: false, combined: false, km_levy: false }
     });
   }
@@ -129,11 +131,11 @@ export default function App() {
     });
   }
 
-  // Bouw tabelregels voor weergave (UI)
+  // UI-rijen bouwen
   function buildVisibleRows(breakdown = {}) {
     const rows = [];
 
-    // Laden/Lossen combineren als één regel (kosten)
+    // Laden/Lossen gecombineerd in 1 regel
     const loadUnload = Number(breakdown.handling_load || 0) + Number(breakdown.handling_unload || 0);
     if (Math.abs(loadUnload) >= 0.005) rows.push(["handling_load_unload", loadUnload]);
 
@@ -145,14 +147,13 @@ export default function App() {
       rows.push(["handling_depart", breakdown.handling_depart]);
     }
 
-    // Overige posten (filter base/linehaul/fuel + 0,00)
+    // Overig (filter base/linehaul/fuel + 0,00)
     for (const [k, v] of Object.entries(breakdown)) {
       if (HIDDEN_KEYS.has(k)) continue;
       if (k.startsWith("handling_")) continue;
       if (Math.abs(Number(v || 0)) < 0.005) continue;
       rows.push([k, v]);
     }
-
     return rows.map(([k, v]) => [LABELS[k] || k, Number(v)]);
   }
 
@@ -164,6 +165,7 @@ export default function App() {
         <h1 className="text-2xl font-bold mb-4">Transportberekening</h1>
 
         <form onSubmit={onQuote} className="grid gap-4 bg-white p-4 rounded-xl shadow">
+          {/* Referentie + adressen */}
           <div className="grid sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium mb-1">
@@ -203,6 +205,7 @@ export default function App() {
             </div>
           </div>
 
+          {/* Trailer + belading + knoppen */}
           <div className="grid sm:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium mb-1">Trailertype</label>
@@ -250,20 +253,9 @@ export default function App() {
             </div>
           </div>
 
-          {/* Exclusieve keuze intern/extern */}
-          <fieldset className="grid sm:grid-cols-3 gap-2">
-            <legend className="text-sm font-medium mb-1">Laden/lossen locatie (kies één)</legend>
-
-            <label className="flex items-center gap-2">
-              <input
-                type="radio"
-                name="load_choice"
-                value="none"
-                checked={form.load_choice === "none"}
-                onChange={onLoadChoice}
-              />
-              <span>Geen specifieke optie</span>
-            </label>
+          {/* Laden/lossen locatie (exclusief) */}
+          <fieldset className="grid sm:grid-cols-2 gap-2">
+            <legend className="text-sm font-medium mb-1">Laden/lossen locatie</legend>
 
             <label className="flex items-center gap-2">
               <input
@@ -288,7 +280,8 @@ export default function App() {
             </label>
           </fieldset>
 
-          <fieldset className="grid sm:grid-cols-3 gap-2">
+          {/* Opties (zonder gecombineerd transport) */}
+          <fieldset className="grid sm:grid-cols-2 gap-2">
             <legend className="text-sm font-medium mb-1">Opties</legend>
 
             <label className="flex items-center gap-2">
@@ -298,15 +291,6 @@ export default function App() {
                 onChange={() => onToggleOption("autolaad_kraan")}
               />
               <span>Autolaadkraan</span>
-            </label>
-
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={form.options.combined}
-                onChange={() => onToggleOption("combined")}
-              />
-              <span>Gecombineerd transport</span>
             </label>
 
             <label className="flex items-center gap-2">
@@ -361,7 +345,7 @@ export default function App() {
                 </table>
               </div>
 
-              {/* Urenoverzicht tonen (zoals gevraagd) */}
+              {/* Urenoverzicht */}
               <div className="mt-4 text-sm text-neutral-700">
                 <div className="font-medium mb-1">Urenoverzicht</div>
                 <ul className="grid sm:grid-cols-4 gap-2">
