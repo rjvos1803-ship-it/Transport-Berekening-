@@ -4,9 +4,9 @@
   "fuel_pct": 0.18,
 
   "handling": {
-    "approach_min_hours": 0.5,
+    "approach_min_hours": 1.0,
     "depart_min_hours": 0.5,
-    "full_trailer_load_unload_hours": 1.5,
+    "full_trailer_load_unload_hours": 2.0,
     "rate_per_hour": 94.5
   },
 
