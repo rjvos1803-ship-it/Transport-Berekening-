@@ -75,6 +75,7 @@ export default function App() {
   async function onQuote(e) {
     e?.preventDefault?.();
     setError("");
+    if (!form.reference.trim()) return setError("Vul een referentie in (verplicht).");
     if (!form.from.trim() || !form.to.trim()) return setError("Vul zowel Van als Naar in.");
 
     try {
@@ -168,14 +169,15 @@ export default function App() {
           <div className="grid sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium mb-1">
-                Referentie <span className="text-rose-600"></span>
+                Referentie <span className="text-rose-600">*</span>
               </label>
               <input
                 className="w-full border rounded px-3 py-2"
                 name="reference"
                 value={form.reference}
                 onChange={onChange}
-                placeholder="Offerte / orderreferentie
+                placeholder="Offerte / orderreferentie"
+                required
               />
             </div>
             <div />
@@ -263,7 +265,7 @@ export default function App() {
                 checked={form.load_choice === "internal"}
                 onChange={onLoadChoice}
               />
-              <span>Eigen Transport</span>
+              <span>Interne locatie</span>
             </label>
 
             <label className="flex items-center gap-2">
@@ -274,7 +276,7 @@ export default function App() {
                 checked={form.load_choice === "external"}
                 onChange={onLoadChoice}
               />
-              <span>Externe Transport</span>
+              <span>Externe locatie</span>
             </label>
           </fieldset>
 
