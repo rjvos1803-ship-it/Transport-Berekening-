@@ -169,15 +169,14 @@ export default function App() {
           <div className="grid sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium mb-1">
-                Referentie <span className="text-rose-600">*</span>
+                Referentie <span className="text-rose-600"></span>
               </label>
               <input
                 className="w-full border rounded px-3 py-2"
                 name="reference"
                 value={form.reference}
                 onChange={onChange}
-                placeholder="Offerte / orderreferentie"
-                required
+                placeholder="Offerte / orderreferentie
               />
             </div>
             <div />
