@@ -1,244 +1,281 @@
 // netlify/functions/quote.mjs
-// Netlify Function (ESM) - rekent transporttarief + depot-keuze voor aanrij/afrij
-import pricing from "../../config/pricing.json" assert { type: "json" };
+// Netlify Function (ESM) — MUST export `handler`
+// Rekent transporttarief o.b.v. Directions API + parameters.
 
 const DEPOTS = {
-  alblasserdam: "Edisonweg 5, 2952 AD Alblasserdam, NL",
-  demeern: "Strijkviertel 39, 3454 PJ De Meern, NL",
-  groningen: "Rouaanstraat 49, 9723 CC Groningen, NL",
-  mook: "Bovensteweg 56, 6585 KD Mook, NL",
+  alblasserdam: "Coatinc Alblasserdam, Nederland",
+  demeern: "De Meern, Nederland",
+  groningen: "Groningen, Nederland",
+  mook: "Mook, Nederland",
 };
 
-const DEPOT_LABELS = {
-  alblasserdam: "Alblasserdam",
-  demeern: "De Meern",
-  groningen: "Groningen",
-  mook: "Mook",
-};
+function json(statusCode, obj) {
+  return {
+    statusCode,
+    headers: { "content-type": "application/json; charset=utf-8" },
+    body: JSON.stringify(obj),
+  };
+}
 
-const TRAILER_LABELS = {
-  vlakke: "Vlakke trailer",
-  uitschuif: "Uitschuif trailer",
-  diepladen: "Diepladen",
-  tautliner: "Tautliner",
-};
+function num(v, fallback = 0) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
 
-const LOAD_GRADE_LABELS = {
-  pallet_1x: "1× pallet",
-  quarter: "¼ trailer",
-  half: "½ trailer",
-  three_quarter: "¾ trailer",
-  full: "Volle trailer",
-};
+function round2(n) {
+  return Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+}
 
-// Beladingsgraad factoren (makkelijk aan te passen)
-// -> Hiermee schaal je handling en/of “vaste” delen (niet de km kosten, die houden we verborgen maar rekenen wel)
-const LOAD_GRADE_FACTOR = {
-  pallet_1x: 0.05,
-  quarter: 0.25,
-  half: 0.5,
-  three_quarter: 0.75,
-  full: 1.0,
-};
+async function getDirections(origin, destination, apiKey) {
+  const url =
+    "https://maps.googleapis.com/maps/api/directions/json?" +
+    new URLSearchParams({
+      origin,
+      destination,
+      key: apiKey,
+      region: "nl",
+      language: "nl",
+    }).toString();
 
-// 1× pallet vaste prijs per afstandsband (zoals afgesproken)
-function palletFixedPrice(distanceKm) {
+  const res = await fetch(url);
+  const data = await res.json();
+
+  if (data.status !== "OK") {
+    const msg = data?.error_message ? ` (${data.error_message})` : "";
+    throw new Error(`Directions API fout: ${data.status}${msg}`);
+  }
+
+  const leg = data.routes[0].legs[0];
+  const km = leg.distance.value / 1000;
+  const hours = leg.duration.value / 3600;
+
+  return {
+    km,
+    hours,
+  };
+}
+
+// Beladingsgraad: 1/4, 1/2, 3/4, vol
+// (Pallet is aparte route)
+function loadFactor(loadGrade) {
+  switch (loadGrade) {
+    case "quarter":
+      return 0.25;
+    case "half":
+      return 0.5;
+    case "threequarter":
+      return 0.75;
+    case "full":
+      return 1.0;
+    default:
+      return 1.0;
+  }
+}
+
+function palletPrice(distanceKm) {
   if (distanceKm <= 50) return 110;
   if (distanceKm <= 100) return 150;
   return 225;
 }
 
-function json(data, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { "content-type": "application/json" },
-  });
-}
-
-function requireStr(v, name) {
-  if (!v || typeof v !== "string" || !v.trim()) throw new Error(`${name} ontbreekt`);
-  return v.trim();
-}
-
-function n(v, def = 0) {
-  const x = Number(v);
-  return Number.isFinite(x) ? x : def;
-}
-
-async function directions(origin, destination, key) {
-  const url = new URL("https://maps.googleapis.com/maps/api/directions/json");
-  url.searchParams.set("origin", origin);
-  url.searchParams.set("destination", destination);
-  url.searchParams.set("key", key);
-
-  const res = await fetch(url.toString());
-  const data = await res.json();
-
-  if (!data || data.status !== "OK") {
-    throw new Error(`Directions API fout: ${data?.status || "UNKNOWN"}`);
+// Trailer multipliers — pas aan als jullie andere waarden willen
+function trailerMultiplier(trailerType) {
+  switch (trailerType) {
+    case "vlakke":
+      return 1.0;
+    case "uitschuif":
+      return 1.1;
+    case "dieplader":
+      return 1.15;
+    case "tautliner":
+      return 1.0;
+    default:
+      return 1.0;
   }
-  const leg = data.routes?.[0]?.legs?.[0];
-  const distanceMeters = leg?.distance?.value ?? 0;
-  const durationSeconds = leg?.duration?.value ?? 0;
-
-  return {
-    distance_km: Math.round((distanceMeters / 1000) * 10) / 10,
-    duration_h: durationSeconds / 3600,
-  };
 }
 
-export default async function handler(req) {
+function trailerLabel(trailerType) {
+  switch (trailerType) {
+    case "vlakke":
+      return "Vlakke trailer";
+    case "uitschuif":
+      return "Uitschuif trailer";
+    case "dieplader":
+      return "Dieplader";
+    case "tautliner":
+      return "Tautliner";
+    default:
+      return trailerType || "-";
+  }
+}
+
+function loadLabel(loadGrade) {
+  switch (loadGrade) {
+    case "quarter":
+      return "25% (¼ trailer)";
+    case "half":
+      return "50% (½ trailer)";
+    case "threequarter":
+      return "75% (¾ trailer)";
+    case "full":
+      return "Volle trailer";
+    case "pallet":
+      return "1× pallet";
+    default:
+      return loadGrade || "-";
+  }
+}
+
+export const handler = async (event) => {
   try {
-    if (req.method !== "POST") {
-      return json({ error: "Method not allowed" }, 405);
+    const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+    if (!apiKey) {
+      return json(500, {
+        error: "Internal error",
+        detail: "Error: GOOGLE_MAPS_API_KEY ontbreekt in environment variables",
+      });
     }
 
-    const key = process.env.GOOGLE_MAPS_API_KEY;
-    if (!key) throw new Error("GOOGLE_MAPS_API_KEY ontbreekt in environment variables");
+    if (event.httpMethod !== "POST") {
+      return json(405, { error: "Gebruik POST" });
+    }
 
-    const body = await req.json().catch(() => ({}));
+    let payload = {};
+    try {
+      payload = JSON.parse(event.body || "{}");
+    } catch {
+      return json(400, { error: "Ongeldige JSON body" });
+    }
 
-    const reference = (body.reference || "").toString();
-    const from = requireStr(body.from, "from");
-    const to = requireStr(body.to, "to");
+    const from = (payload.from || "").trim();
+    const to = (payload.to || "").trim();
+    if (!from || !to) {
+      return json(400, { error: "from en to zijn verplicht" });
+    }
 
-    const trailer_type = (body.trailer_type || "vlakke").toString();
-    const load_grade = (body.load_grade || "full").toString();
+    const reference = (payload.reference || "").trim();
 
-    const depot = (body.depot || "alblasserdam").toString();
-    const depotAddress = DEPOTS[depot] || DEPOTS.alblasserdam;
+    const trailer_type = payload.trailer_type || "vlakke";
+    const load_grade = payload.load_grade || "full"; // quarter/half/threequarter/full/pallet
+    const depot_key = (payload.depot || "alblasserdam").toLowerCase();
 
-    const options = body.options || {};
-    const autolaad_kraan = !!options.autolaad_kraan;
+    const options = payload.options || {};
     const km_levy = !!options.km_levy;
+    const autolaad_kraan = !!options.autolaad_kraan;
 
-    // internal/external: verplicht één (UI dwingt dit af)
-    const load_unload_location = (options.load_unload_location || "external").toString(); // "internal" | "external"
+    // locatie keuze: EXACT 1 van de twee
+    // internal_location / external_location (boolean)
+    const internal_location = !!options.internal_location;
+    const external_location = !!options.external_location;
 
-    // ROUTES:
-    // - main route: from -> to
-    // - approach route: depot -> from
-    // - depart route: to -> depot  (maar: bij interne locatie géén afrijtijd gebruiken)
-    const main = await directions(from, to, key);
-    const approach = await directions(depotAddress, from, key);
-    const depart = load_unload_location === "internal" ? { distance_km: 0, duration_h: 0 } : await directions(to, depotAddress, key);
+    if (internal_location && external_location) {
+      return json(400, { error: "Kies óf interne locatie óf externe locatie (niet beide)." });
+    }
 
-    // MINIMA
-    const approach_hours = Math.max(0.5, approach.duration_h || 0.0);
-    const depart_hours = load_unload_location === "internal" ? 0.0 : Math.max(0.5, depart.duration_h || 0.0);
+    const depotAddress = DEPOTS[depot_key] || DEPOTS.alblasserdam;
 
-    // Laden/Lossen uren (zoals afgesproken):
-    // - Interne locatie: totaal 1.5 + 0.5 = 2.0 uur
-    // - Externe locatie: totaal 1.5 + 1.5 = 3.0 uur
-    const load_unload_hours_total = load_unload_location === "internal" ? 2.0 : 3.0;
+    // Instellingen (jullie waarden)
+    const min_fee = 110.0;         // minimum totaal
+    const eur_per_km_base = 0.80;  // km tarief
+    const base_hour_rate = 92.5;   // uurtarief handling
+    const km_levy_per_km = 0.12;   // optioneel
 
-    // Beladingsfactor
-    const lf = LOAD_GRADE_FACTOR[load_grade] ?? 1.0;
+    // Routes
+    const [approach, main, depart] = await Promise.all([
+      getDirections(depotAddress, from, apiKey),
+      getDirections(from, to, apiKey),
+      getDirections(to, depotAddress, apiKey),
+    ]);
 
-    // Pricing
-    const min_fee = n(pricing.min_fee, 110);
-    const eur_per_km_base = n(pricing.eur_per_km_base, 0.8);
-    const rate_per_hour = n(pricing.rate_per_hour, 92.5);
-    const km_levy_per_km = n(pricing.km_levy_per_km, 0.12);
+    const distance_km = main.km;
 
-    const multiplier = n(pricing.multipliers?.[trailer_type], 1.0);
+    // Aanrij/Afrij tijd (minimaal 0,5u)
+    let approach_hours = Math.max(0.5, approach.hours);
+    let depart_hours = Math.max(0.5, depart.hours);
+
+    // Bij interne locatie: GEEN afrijtijd gebruiken (zoals jij vroeg)
+    if (internal_location) depart_hours = 0;
+
+    // Laad/los uren (als “locatie optie” gekozen is)
+    // Interne locatie: totaal = 1.5 + 0.5 = 2.0 uur
+    // Externe locatie: totaal = 1.5 + 1.5 = 3.0 uur
+    let loadunload_hours_full = 0;
+    if (internal_location) loadunload_hours_full = 2.0;
+    if (external_location) loadunload_hours_full = 3.0;
+
+    // Beladingsgraad beïnvloedt uren (ratio)
+    const lf = load_grade === "pallet" ? 1.0 : loadFactor(load_grade);
+    const loadunload_hours = loadunload_hours_full * lf;
 
     // Autolaadkraan: +28% op uurtarief
-    const rate_used = rate_per_hour * (autolaad_kraan ? 1.28 : 1.0) * multiplier;
+    const rate_used = autolaad_kraan ? base_hour_rate * 1.28 : base_hour_rate;
 
-    // Kilometerkosten (we rekenen dit mee maar UI/PDF verbergt deze)
-    const linehaul = (main.distance_km * eur_per_km_base) * multiplier;
+    // Kilometerkosten (blijft intern/achtergrond, mag UI/PDF verbergen)
+    const mult = trailerMultiplier(trailer_type);
+    const linehaul = distance_km * eur_per_km_base * mult * lf;
 
-    // Brandstof (we rekenen mee maar UI/PDF verbergt deze)
-    const fuel = n(pricing.fuel_pct, 0.0) > 0 ? linehaul * n(pricing.fuel_pct, 0.0) : 0;
-
-    // Basistarief (op achtergrond, door jou aanpasbaar in pricing.json)
-    const base = n(pricing.base_fee, 0.0);
-
-    // Handling: aanrij/afrij en laden/lossen — schaalbaar met beladingsgraad
-    // (hier zit je "beladingsgraad werkt niet" meestal: zorg dat lf toegepast wordt)
-    const handling_approach = approach_hours * rate_used * lf;
-    const handling_depart = depart_hours * rate_used * lf;
-    const handling_load_unload = load_unload_hours_total * rate_used * lf;
-
-    // Pallet 1x: vaste prijs override (zoals afgesproken)
-    // -> als load_grade == pallet_1x zetten we handling + base/linehaul etc nog steeds aan? (meestal wil je “all-in”)
-    // Hier doen we: pallet prijs = minimum tarief + km levy optie (indien aangevinkt) (simpel en duidelijk)
-    let pallet_override = 0;
-    if (load_grade === "pallet_1x") {
-      pallet_override = palletFixedPrice(main.distance_km);
-    }
+    // Pallet vaste prijs (vervangt “transportbasis”; handling + heffing kan er nog bovenop)
+    const pallet_fee = load_grade === "pallet" ? palletPrice(distance_km) : 0;
 
     // Kilometerheffing
-    const km_levy_cost = km_levy ? (main.distance_km * km_levy_per_km) : 0;
+    const km_levy_cost = km_levy ? distance_km * km_levy_per_km : 0;
 
-    // Totaal berekenen
-    let subtotal =
-      base +
-      linehaul +
-      fuel +
-      handling_approach +
-      handling_depart +
-      handling_load_unload +
-      km_levy_cost;
+    // Handling kosten: aanrij + afrij + laden/lossen
+    const handling_cost = (approach_hours + depart_hours + loadunload_hours) * rate_used;
 
-    // Als pallet override actief is, gebruiken we dat als “hoofdbedrag”
-    // (en tellen alleen km levy erbij als die aangevinkt is)
-    if (pallet_override > 0) {
-      subtotal = pallet_override + km_levy_cost;
-    }
-
-    // Min fee
+    // Totaal
+    const subtotal = linehaul + pallet_fee + km_levy_cost + handling_cost;
     const total = Math.max(min_fee, subtotal);
 
-    return json({
+    // Breakdown: stuur alles terug; UI/PDF kan bepaalde regels verbergen
+    const breakdown = {
+      // base op 0 gezet (zoals je wilde), min_fee blijft wel actief in total
+      base: 0,
+      // linehaul = kilometerkosten (jij wilt verbergen, maar wel rekenen)
+      linehaul: round2(linehaul),
+      pallet_fee: round2(pallet_fee),
+      handling_approach: round2(approach_hours * rate_used),
+      handling_depart: round2(depart_hours * rate_used),
+      handling_loadunload: round2(loadunload_hours * rate_used),
+      km_levy: round2(km_levy_cost),
+    };
+
+    return json(200, {
       inputs: {
         reference,
         from,
         to,
-        depot,
-        depot_label: DEPOT_LABELS[depot] || "Alblasserdam",
         trailer_type,
-        trailer_type_label: TRAILER_LABELS[trailer_type] || trailer_type,
+        trailer_type_label: trailerLabel(trailer_type),
         load_grade,
-        load_grade_label: LOAD_GRADE_LABELS[load_grade] || load_grade,
+        load_label: loadLabel(load_grade),
+        depot: depot_key,
+        depot_label:
+          depot_key === "alblasserdam" ? "Alblasserdam" :
+          depot_key === "demeern" ? "De Meern" :
+          depot_key === "groningen" ? "Groningen" :
+          depot_key === "mook" ? "Mook" : depot_key,
         options: {
+          internal_location,
+          external_location,
           autolaad_kraan,
           km_levy,
-          load_unload_location,
         },
       },
       derived: {
-        distance_km: main.distance_km,
-        approach_km: approach.distance_km,
-        depart_km: depart.distance_km,
-        approach_hours,
-        depart_hours,
-        load_unload_hours_total,
-        load_factor: lf,
-        rate_used,
+        distance_km: round2(distance_km),
+        approach_hours: round2(approach_hours),
+        depart_hours: round2(depart_hours),
+        loadunload_hours: round2(loadunload_hours),
+        rate_used: round2(rate_used),
+        min_fee: round2(min_fee),
       },
-      breakdown: {
-        // UI/PDF mag dit verbergen, maar we geven het wel terug
-        base,
-        linehaul,
-        fuel,
-
-        handling_approach,
-        handling_depart,
-        handling_load_unload,
-
-        km_levy: km_levy_cost,
-
-        // voor debugging/controle (mag je later weghalen)
-        pallet_override,
-      },
-      total,
+      breakdown,
+      // totaal
+      total: round2(total),
+      subtotal: round2(subtotal),
     });
   } catch (e) {
-    return json(
-      { error: "Internal error", detail: String(e?.message || e) },
-      500
-    );
+    return json(500, { error: "Internal error", detail: String(e) });
   }
-}
+};
