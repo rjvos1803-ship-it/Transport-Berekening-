@@ -3,10 +3,10 @@
 import pricing from "../../config/pricing.json" assert { type: "json" };
 
 const DEPOTS = {
-  alblasserdam: "Coatinc Alblasserdam, NL",
-  demeern: "Coatinc De Meern, NL",
-  groningen: "Coatinc Groningen, NL",
-  mook: "Coatinc Mook, NL",
+  alblasserdam: "Edisonweg 5, 2952 AD Alblasserdam, NL",
+  demeern: "Strijkviertel 39, 3454 PJ De Meern, NL",
+  groningen: "Rouaanstraat 49, 9723 CC Groningen, NL",
+  mook: "Bovensteweg 56, 6585 KD Mook, NL",
 };
 
 const DEPOT_LABELS = {
