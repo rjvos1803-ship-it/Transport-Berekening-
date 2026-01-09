@@ -73,10 +73,37 @@ export default function App() {
   }
 
   async function onQuote(e) {
-    e?.preventDefault?.();
-    setError("");
-    if (!form.reference.trim()) return setError("Vul een referentie in (verplicht).");
-    if (!form.from.trim() || !form.to.trim()) return setError("Vul zowel Van als Naar in.");
+  e?.preventDefault?.();
+  setError("");
+
+  // Alleen Van en Naar verplicht
+  if (!form.from.trim() || !form.to.trim()) {
+    return setError("Vul zowel Van als Naar in.");
+  }
+
+  try {
+    setLoading(true);
+
+    const res = await fetch("/.netlify/functions/quote", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(form),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      throw new Error(data?.detail || data?.error || "Internal error");
+    }
+
+    setQuote(data);
+  } catch (err) {
+    setError(err.message || "Internal error");
+  } finally {
+    setLoading(false);
+  }
+}
+
 
     try {
       setBusy(true);
@@ -169,7 +196,7 @@ export default function App() {
           <div className="grid sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium mb-1">
-                Referentie <span className="text-rose-600">*</span>
+                Referentie 
               </label>
               <input
                 className="w-full border rounded px-3 py-2"
@@ -177,7 +204,6 @@ export default function App() {
                 value={form.reference}
                 onChange={onChange}
                 placeholder="Offerte / orderreferentie"
-                required
               />
             </div>
             <div />
@@ -265,7 +291,7 @@ export default function App() {
                 checked={form.load_choice === "internal"}
                 onChange={onLoadChoice}
               />
-              <span>Interne locatie</span>
+              <span>Eigen transport</span>
             </label>
 
             <label className="flex items-center gap-2">
@@ -276,7 +302,7 @@ export default function App() {
                 checked={form.load_choice === "external"}
                 onChange={onLoadChoice}
               />
-              <span>Externe locatie</span>
+              <span>Externe Transport</span>
             </label>
           </fieldset>
 
