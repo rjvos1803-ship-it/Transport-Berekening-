@@ -75,7 +75,6 @@ export default function App() {
   async function onQuote(e) {
     e?.preventDefault?.();
     setError("");
-    if (!form.reference.trim()) return setError("Vul een referentie in (verplicht).");
     if (!form.from.trim() || !form.to.trim()) return setError("Vul zowel Van als Naar in.");
 
     try {
