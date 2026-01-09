@@ -265,7 +265,7 @@ export default function App() {
                 checked={form.load_choice === "internal"}
                 onChange={onLoadChoice}
               />
-              <span>Interne locatie</span>
+              <span>Eigen Transport</span>
             </label>
 
             <label className="flex items-center gap-2">
@@ -276,7 +276,7 @@ export default function App() {
                 checked={form.load_choice === "external"}
                 onChange={onLoadChoice}
               />
-              <span>Externe locatie</span>
+              <span>Externe Transport</span>
             </label>
           </fieldset>
 
