@@ -1,320 +1,379 @@
-import React, { useMemo, useState } from "react";
-import { exportQuoteToPDF } from "./lib/pdfutil.js";
+// src/App.jsx
+import { useState } from "react";
+import { exportQuoteToPDF } from "./lib/pdfutil";
 
-const TRAILERS = [
-  { value: "vlakke", label: "Vlakke trailer" },
-  { value: "uitschuif", label: "Uitschuif trailer" },
-  { value: "diepladen", label: "Diepladen" },
-  { value: "tautliner", label: "Tautliner" },
-];
+const API_URL = "/.netlify/functions/quote";
 
-const LOAD_GRADES = [
-  { value: "pallet_1x", label: "1× pallet" },
-  { value: "quarter", label: "¼ trailer" },
-  { value: "half", label: "½ trailer" },
-  { value: "three_quarter", label: "¾ trailer" },
-  { value: "full", label: "Volle trailer" },
-];
+// verberg deze posten (wel meegerekend server-side)
+const HIDDEN_KEYS = new Set(["base", "linehaul", "fuel"]);
 
-const DEPOTS = [
-  { value: "alblasserdam", label: "Alblasserdam" },
-  { value: "demeern", label: "De Meern" },
-  { value: "groningen", label: "Groningen" },
-  { value: "mook", label: "Mook" },
-];
+// labels voor zichtbare posten
+const LABELS = {
+  handling_approach: "Aanrijden",
+  handling_depart: "Afrijden",
+  handling_load_unload: "Laden/Lossen",
+  km_levy: "Kilometerheffing",
+  zone_flat: "Zonetoeslag",
+  discount: "Korting gecombineerd transport"
+};
+
+function eur(n) {
+  const v = Number(n ?? 0);
+  return `€ ${v.toFixed(2)}`;
+}
 
 export default function App() {
-  const [reference, setReference] = useState("");
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
-  const [trailerType, setTrailerType] = useState("vlakke");
-  const [loadGrade, setLoadGrade] = useState("full");
-
-  // NEW: depotkeuze (radiobuttons)
-  const [depot, setDepot] = useState("alblasserdam");
-
-  // Laden/lossen locatie (kies één)
-  // (UI: interne / externe) — geen "geen specifieke optie" meer
-  const [loadUnloadLocation, setLoadUnloadLocation] = useState("external"); // default
-
-  // Opties
-  const [autolaadKraan, setAutolaadKraan] = useState(false);
-  const [kmLevy, setKmLevy] = useState(false);
-
-  const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState("");
-  const [quote, setQuote] = useState(null);
-
-  const trailerLabel = useMemo(
-    () => TRAILERS.find(t => t.value === trailerType)?.label || trailerType,
-    [trailerType]
-  );
-  const loadGradeLabel = useMemo(
-    () => LOAD_GRADES.find(l => l.value === loadGrade)?.label || loadGrade,
-    [loadGrade]
-  );
-  const depotLabel = useMemo(
-    () => DEPOTS.find(d => d.value === depot)?.label || depot,
-    [depot]
-  );
-
-  async function onCalculate() {
-    setErr("");
-    setQuote(null);
-
-    if (!from.trim() || !to.trim()) {
-      setErr("Van en Naar zijn verplicht.");
-      return;
+  const [form, setForm] = useState({
+    reference: "",
+    from: "",
+    to: "",
+    trailer_type: "vlakke",
+    load_grade: "full",
+    // exclusieve keuze in de UI (nu alleen 'internal' of 'external')
+    load_choice: "external",
+    options: {
+      autolaad_kraan: false,
+      // combined weggehaald uit UI; laten we default op false
+      combined: false,
+      km_levy: false
     }
+  });
 
-    setLoading(true);
+  const [busy, setBusy] = useState(false);
+  const [quote, setQuote] = useState(null);
+  const [error, setError] = useState("");
+
+  const trailers = [
+    { value: "vlakke", label: "Vlakke trailer" },
+    { value: "uitschuif", label: "Uitschuif trailer" },
+    { value: "dieplader", label: "Dieplader" },
+    { value: "tautliner", label: "Tautliner" }
+  ];
+
+  const loads = [
+    { value: "one_pallet", label: "1× pallet" },
+    { value: "quarter", label: "¼ trailer" },
+    { value: "half", label: "½ trailer" },
+    { value: "three_quarter", label: "¾ trailer" },
+    { value: "full", label: "Volle trailer" }
+  ];
+
+  function onChange(e) {
+    const { name, value } = e.target;
+    setForm((f) => ({ ...f, [name]: value }));
+  }
+
+  function onToggleOption(key) {
+    setForm((f) => ({ ...f, options: { ...f.options, [key]: !f.options[key] } }));
+  }
+
+  function onLoadChoice(e) {
+    const v = e.target.value; // "internal" | "external"
+    setForm((f) => ({ ...f, load_choice: v }));
+  }
+
+  async function onQuote(e) {
+    e?.preventDefault?.();
+    setError("");
+    if (!form.reference.trim()) return setError("Vul een referentie in (verplicht).");
+    if (!form.from.trim() || !form.to.trim()) return setError("Vul zowel Van als Naar in.");
+
     try {
-      const res = await fetch("/.netlify/functions/quote", {
+      setBusy(true);
+      const opts = {
+        ...form.options,
+        load_grade: form.load_grade,
+        load_unload_internal: form.load_choice === "internal",
+        load_unload_external: form.load_choice === "external"
+      };
+      const payload = {
+        from: form.from,
+        to: form.to,
+        trailer_type: form.trailer_type,
+        options: opts
+      };
+      const res = await fetch(API_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          reference: reference?.trim() || "",
-          from: from.trim(),
-          to: to.trim(),
-          trailer_type: trailerType,
-          load_grade: loadGrade,
-          depot, // NEW
-          options: {
-            autolaad_kraan: !!autolaadKraan,
-            km_levy: !!kmLevy,
-            load_unload_location: loadUnloadLocation, // "internal" | "external"
-          },
-        }),
+        body: JSON.stringify(payload)
       });
-
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(data?.detail || data?.error || "Internal error");
-      }
-      setQuote(data);
-    } catch (e) {
-      setErr(String(e?.message || e));
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Onbekende fout");
+      setQuote({ ...data, reference: form.reference });
+    } catch (err) {
+      setError(String(err.message || err));
     } finally {
-      setLoading(false);
+      setBusy(false);
     }
   }
 
-  function onClear() {
-    setReference("");
-    setFrom("");
-    setTo("");
-    setTrailerType("vlakke");
-    setLoadGrade("full");
-    setDepot("alblasserdam");
-    setLoadUnloadLocation("external");
-    setAutolaadKraan(false);
-    setKmLevy(false);
-    setErr("");
+  function onReset() {
     setQuote(null);
+    setError("");
+    setForm({
+      reference: "",
+      from: "",
+      to: "",
+      trailer_type: "vlakke",
+      load_grade: "full",
+      load_choice: "external",
+      options: { autolaad_kraan: false, combined: false, km_levy: false }
+    });
   }
 
   async function onPDF() {
     if (!quote) return;
     await exportQuoteToPDF(quote, {
-      reference: quote?.inputs?.reference || reference || "",
+      reference: quote.reference,
       logoUrl: "/logo.jpg",
       company: "The Coatinc Company",
-      title: "Coatinc Transport berekening",
+      title: "Coatinc Transport berekening"
     });
   }
 
-  return (
-    <div style={{ fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial", background: "#f7f7f8", minHeight: "100vh", padding: 24 }}>
-      <div style={{ maxWidth: 980, margin: "0 auto" }}>
-        <h1 style={{ margin: "0 0 16px", fontSize: 28 }}>Transportberekening</h1>
+  // UI-rijen bouwen
+  function buildVisibleRows(breakdown = {}) {
+    const rows = [];
 
-        <div style={{ background: "#fff", borderRadius: 12, padding: 18, boxShadow: "0 1px 8px rgba(0,0,0,.06)" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 14 }}>
+    // Laden/Lossen gecombineerd in 1 regel
+    const loadUnload = Number(breakdown.handling_load || 0) + Number(breakdown.handling_unload || 0);
+    if (Math.abs(loadUnload) >= 0.005) rows.push(["handling_load_unload", loadUnload]);
+
+    // Aanrijden / Afrijden
+    if (Math.abs(Number(breakdown.handling_approach || 0)) >= 0.005) {
+      rows.push(["handling_approach", breakdown.handling_approach]);
+    }
+    if (Math.abs(Number(breakdown.handling_depart || 0)) >= 0.005) {
+      rows.push(["handling_depart", breakdown.handling_depart]);
+    }
+
+    // Overig (filter base/linehaul/fuel + 0,00)
+    for (const [k, v] of Object.entries(breakdown)) {
+      if (HIDDEN_KEYS.has(k)) continue;
+      if (k.startsWith("handling_")) continue;
+      if (Math.abs(Number(v || 0)) < 0.005) continue;
+      rows.push([k, v]);
+    }
+    return rows.map(([k, v]) => [LABELS[k] || k, Number(v)]);
+  }
+
+  const visibleRows = buildVisibleRows(quote?.breakdown);
+
+  return (
+    <div className="min-h-screen w-full bg-neutral-50 text-neutral-900">
+      <div className="max-w-4xl mx-auto p-4 sm:p-6">
+        <h1 className="text-2xl font-bold mb-4">Transportberekening</h1>
+
+        <form onSubmit={onQuote} className="grid gap-4 bg-white p-4 rounded-xl shadow">
+          {/* Referentie + adressen */}
+          <div className="grid sm:grid-cols-2 gap-4">
             <div>
-              <label style={{ display: "block", fontWeight: 600, marginBottom: 6 }}>Referentie</label>
+              <label className="block text-sm font-medium mb-1">
+                Referentie <span className="text-rose-600">*</span>
+              </label>
               <input
-                value={reference}
-                onChange={(e) => setReference(e.target.value)}
+                className="w-full border rounded px-3 py-2"
+                name="reference"
+                value={form.reference}
+                onChange={onChange}
                 placeholder="Offerte / orderreferentie"
-                style={inputStyle}
+                required
               />
             </div>
+            <div />
+            <div>
+              <label className="block text-sm font-medium mb-1">Van</label>
+              <input
+                className="w-full border rounded px-3 py-2"
+                name="from"
+                value={form.from}
+                onChange={onChange}
+                placeholder="Adres of plaats (herkomst)"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Naar</label>
+              <input
+                className="w-full border rounded px-3 py-2"
+                name="to"
+                value={form.to}
+                onChange={onChange}
+                placeholder="Adres of plaats (bestemming)"
+                required
+              />
+            </div>
+          </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-              <div>
-                <label style={{ display: "block", fontWeight: 600, marginBottom: 6 }}>Van</label>
-                <input value={from} onChange={(e) => setFrom(e.target.value)} placeholder="Adres / postcode" style={inputStyle} />
+          {/* Trailer + belading + knoppen */}
+          <div className="grid sm:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">Trailertype</label>
+              <select
+                className="w-full border rounded px-3 py-2"
+                name="trailer_type"
+                value={form.trailer_type}
+                onChange={onChange}
+              >
+                {trailers.map(t => (
+                  <option key={t.value} value={t.value}>{t.label}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1">Beladingsgraad</label>
+              <select
+                className="w-full border rounded px-3 py-2"
+                name="load_grade"
+                value={form.load_grade}
+                onChange={onChange}
+              >
+                {loads.map(l => (
+                  <option key={l.value} value={l.value}>{l.label}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex items-end gap-2">
+              <button
+                type="submit"
+                disabled={busy}
+                className="inline-flex items-center justify-center px-4 py-2 rounded bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
+              >
+                {busy ? "Berekenen…" : "Bereken tarief"}
+              </button>
+              <button
+                type="button"
+                onClick={onReset}
+                className="inline-flex items-center justify-center px-4 py-2 rounded border hover:bg-neutral-100"
+              >
+                Leegmaken
+              </button>
+            </div>
+          </div>
+
+          {/* Laden/lossen locatie (exclusief) */}
+          <fieldset className="grid sm:grid-cols-2 gap-2">
+            <legend className="text-sm font-medium mb-1">Laden/lossen locatie</legend>
+
+            <label className="flex items-center gap-2">
+              <input
+                type="radio"
+                name="load_choice"
+                value="internal"
+                checked={form.load_choice === "internal"}
+                onChange={onLoadChoice}
+              />
+              <span>Interne locatie</span>
+            </label>
+
+            <label className="flex items-center gap-2">
+              <input
+                type="radio"
+                name="load_choice"
+                value="external"
+                checked={form.load_choice === "external"}
+                onChange={onLoadChoice}
+              />
+              <span>Externe locatie</span>
+            </label>
+          </fieldset>
+
+          {/* Opties (zonder gecombineerd transport) */}
+          <fieldset className="grid sm:grid-cols-2 gap-2">
+            <legend className="text-sm font-medium mb-1">Opties</legend>
+
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={form.options.autolaad_kraan}
+                onChange={() => onToggleOption("autolaad_kraan")}
+              />
+              <span>Autolaadkraan</span>
+            </label>
+
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={form.options.km_levy}
+                onChange={() => onToggleOption("km_levy")}
+              />
+              <span>Kilometerheffing</span>
+            </label>
+          </fieldset>
+
+          {!!error && (
+            <div className="text-rose-700 bg-rose-50 border border-rose-200 rounded p-3">
+              {error}
+            </div>
+          )}
+        </form>
+
+        {/* RESULTAAT */}
+        {quote && (
+          <div className="mt-6 bg-white rounded-xl shadow">
+            <div className="p-4 border-b">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold">Resultaat</h2>
+                <div className="text-sm text-neutral-600">
+                  Afstand: <strong>{quote?.derived?.distance_km ?? 0} km</strong>
+                </div>
               </div>
-              <div>
-                <label style={{ display: "block", fontWeight: 600, marginBottom: 6 }}>Naar</label>
-                <input value={to} onChange={(e) => setTo(e.target.value)} placeholder="Adres / postcode" style={inputStyle} />
+              <div className="text-sm text-neutral-600 mt-1">
+                Referentie: <strong>{quote.reference || "-"}</strong>
               </div>
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 220px", gap: 14, alignItems: "end" }}>
-              <div>
-                <label style={{ display: "block", fontWeight: 600, marginBottom: 6 }}>Trailertype</label>
-                <select value={trailerType} onChange={(e) => setTrailerType(e.target.value)} style={inputStyle}>
-                  {TRAILERS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-                </select>
-              </div>
-              <div>
-                <label style={{ display: "block", fontWeight: 600, marginBottom: 6 }}>Beladingsgraad</label>
-                <select value={loadGrade} onChange={(e) => setLoadGrade(e.target.value)} style={inputStyle}>
-                  {LOAD_GRADES.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
-                </select>
-              </div>
-
-              {/* NEW: Depotkeuze */}
-              <div>
-                <label style={{ display: "block", fontWeight: 600, marginBottom: 6 }}>Vertrekpunt depot</label>
-                <select value={depot} onChange={(e) => setDepot(e.target.value)} style={inputStyle}>
-                  {DEPOTS.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
-                </select>
+            <div className="p-4">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <tbody>
+                    {buildVisibleRows(quote?.breakdown).map(([label, value]) => (
+                      <tr key={label} className="border-b last:border-b-0">
+                        <td className="py-2 pr-3">{label}</td>
+                        <td className="py-2 pl-3 text-right font-semibold">{eur(value)}</td>
+                      </tr>
+                    ))}
+                    <tr>
+                      <td className="py-2 pr-3 font-semibold">Totaal</td>
+                      <td className="py-2 pl-3 text-right text-emerald-700 font-bold">
+                        {eur(quote.total)}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
 
-              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-                <button onClick={onCalculate} disabled={loading} style={btnPrimary}>
-                  {loading ? "Bezig..." : "Bereken tarief"}
+              {/* Urenoverzicht */}
+              <div className="mt-4 text-sm text-neutral-700">
+                <div className="font-medium mb-1">Urenoverzicht</div>
+                <ul className="grid sm:grid-cols-4 gap-2">
+                  <li>Aanrijden: <strong>{quote?.derived?.approach_hours ?? 0} u</strong></li>
+                  <li>Laden: <strong>{quote?.derived?.load_hours ?? 0} u</strong></li>
+                  <li>Lossen: <strong>{quote?.derived?.unload_hours ?? 0} u</strong></li>
+                  <li>Afrijden: <strong>{quote?.derived?.depart_hours ?? 0} u</strong></li>
+                </ul>
+              </div>
+
+              <div className="mt-4 flex gap-2">
+                <button
+                  onClick={onPDF}
+                  className="inline-flex items-center justify-center px-4 py-2 rounded bg-indigo-600 text-white hover:bg-indigo-700"
+                >
+                  PDF downloaden
                 </button>
-                <button onClick={onClear} style={btnGhost}>Leegmaken</button>
-              </div>
-            </div>
-
-            <div>
-              <div style={{ fontWeight: 700, marginBottom: 8 }}>Laden/lossen locatie</div>
-              <div style={{ display: "flex", gap: 22, flexWrap: "wrap" }}>
-                <label style={radioLabel}>
-                  <input
-                    type="radio"
-                    name="luloc"
-                    checked={loadUnloadLocation === "internal"}
-                    onChange={() => setLoadUnloadLocation("internal")}
-                  />
-                  <span>Interne locatie</span>
-                </label>
-                <label style={radioLabel}>
-                  <input
-                    type="radio"
-                    name="luloc"
-                    checked={loadUnloadLocation === "external"}
-                    onChange={() => setLoadUnloadLocation("external")}
-                  />
-                  <span>Externe locatie</span>
-                </label>
-              </div>
-            </div>
-
-            <div>
-              <div style={{ fontWeight: 700, marginBottom: 8 }}>Opties</div>
-              <div style={{ display: "flex", gap: 22, flexWrap: "wrap" }}>
-                <label style={checkLabel}>
-                  <input type="checkbox" checked={autolaadKraan} onChange={(e) => setAutolaadKraan(e.target.checked)} />
-                  <span>Autolaadkraan</span>
-                </label>
-
-                <label style={checkLabel}>
-                  <input type="checkbox" checked={kmLevy} onChange={(e) => setKmLevy(e.target.checked)} />
-                  <span>Kilometerheffing</span>
-                </label>
-              </div>
-            </div>
-
-            {err ? (
-              <div style={{ background: "#ffeaea", border: "1px solid #ffb6b6", color: "#a40000", padding: 12, borderRadius: 8 }}>
-                {err}
-              </div>
-            ) : null}
-          </div>
-        </div>
-
-        {quote ? (
-          <div style={{ marginTop: 16, background: "#fff", borderRadius: 12, padding: 18, boxShadow: "0 1px 8px rgba(0,0,0,.06)" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-              <h2 style={{ margin: 0, fontSize: 18 }}>Resultaat</h2>
-              <button onClick={onPDF} style={btnPrimary}>PDF downloaden</button>
-            </div>
-
-            <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <KV label="Afstand" value={`${quote?.derived?.distance_km ?? 0} km`} />
-              <KV label="Vertrekpunt" value={quote?.inputs?.depot_label || depotLabel} />
-              <KV label="Trailertype" value={quote?.inputs?.trailer_type_label || trailerLabel} />
-              <KV label="Beladingsgraad" value={quote?.inputs?.load_grade_label || loadGradeLabel} />
-            </div>
-
-            {/* Kosten: let op, kilometerkosten en brandstof verbergen we in UI */}
-            <div style={{ marginTop: 14, borderTop: "1px solid #eee", paddingTop: 12 }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 140px 1fr 140px", gap: 10 }}>
-                <Row label="Aanrijden" value={quote?.breakdown?.handling_approach} />
-                <Row label="Afrijden" value={quote?.breakdown?.handling_depart} />
-                <Row label="Laden/Lossen" value={quote?.breakdown?.handling_load_unload} />
-                <Row label="Kilometerheffing" value={quote?.breakdown?.km_levy} />
-              </div>
-
-              <div style={{ marginTop: 12, borderTop: "1px solid #eee", paddingTop: 12, display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-                <div style={{ fontWeight: 800, fontSize: 18 }}>Totaal</div>
-                <div style={{ fontWeight: 900, fontSize: 20 }}>{eur(quote?.total ?? 0)}</div>
+                <button
+                  onClick={onReset}
+                  className="inline-flex items-center justify-center px-4 py-2 rounded border hover:bg-neutral-100"
+                >
+                  Leegmaken
+                </button>
               </div>
             </div>
           </div>
-        ) : null}
+        )}
       </div>
     </div>
   );
 }
-
-function eur(n) {
-  return `€ ${Number(n ?? 0).toFixed(2)}`;
-}
-
-function KV({ label, value }) {
-  return (
-    <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-      <div style={{ color: "#444" }}>{label}</div>
-      <div style={{ fontWeight: 700 }}>{value}</div>
-    </div>
-  );
-}
-
-function Row({ label, value }) {
-  const v = Number(value ?? 0);
-  if (!value || Math.abs(v) < 0.005) return null; // 0-regels verbergen
-  return (
-    <>
-      <div style={{ color: "#333" }}>{label}</div>
-      <div style={{ textAlign: "right", fontWeight: 700 }}>{eur(v)}</div>
-    </>
-  );
-}
-
-const inputStyle = {
-  width: "100%",
-  padding: "10px 12px",
-  borderRadius: 8,
-  border: "1px solid #dcdcdc",
-  outline: "none",
-  background: "#fff",
-};
-
-const btnPrimary = {
-  padding: "10px 14px",
-  borderRadius: 8,
-  border: "1px solid #0a7",
-  background: "#0a7",
-  color: "#fff",
-  fontWeight: 700,
-  cursor: "pointer",
-};
-
-const btnGhost = {
-  padding: "10px 14px",
-  borderRadius: 8,
-  border: "1px solid #ddd",
-  background: "#fff",
-  color: "#111",
-  fontWeight: 700,
-  cursor: "pointer",
-};
-
-const radioLabel = { display: "flex", alignItems: "center", gap: 10 };
-const checkLabel = { display: "flex", alignItems: "center", gap: 10 };
