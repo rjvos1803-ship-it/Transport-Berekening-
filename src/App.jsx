@@ -1,5 +1,5 @@
 // src/App.jsx
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { exportQuoteToPDF } from "./lib/pdfutil";
 
 const API_URL = "/.netlify/functions/quote";
@@ -14,7 +14,8 @@ const LABELS = {
   handling_load_unload: "Laden/Lossen",
   km_levy: "Kilometerheffing",
   zone_flat: "Zonetoeslag",
-  discount: "Korting gecombineerd transport"
+  discount: "Korting gecombineerd transport",
+  accessorials: "Bijkosten",
 };
 
 function eur(n) {
@@ -29,34 +30,37 @@ export default function App() {
     to: "",
     trailer_type: "vlakke",
     load_grade: "full",
-    // exclusieve keuze in de UI (nu alleen 'internal' of 'external')
-    load_choice: "external",
+    load_choice: "external", // "internal" | "external"
     options: {
       autolaad_kraan: false,
-      // combined weggehaald uit UI; laten we default op false
-      combined: false,
-      km_levy: false
-    }
+      km_levy: false,
+    },
   });
 
   const [busy, setBusy] = useState(false);
   const [quote, setQuote] = useState(null);
   const [error, setError] = useState("");
 
-  const trailers = [
-    { value: "vlakke", label: "Vlakke trailer" },
-    { value: "uitschuif", label: "Uitschuif trailer" },
-    { value: "dieplader", label: "Dieplader" },
-    { value: "tautliner", label: "Tautliner" }
-  ];
+  const trailers = useMemo(
+    () => [
+      { value: "vlakke", label: "Vlakke trailer" },
+      { value: "uitschuif", label: "Uitschuif trailer" },
+      { value: "dieplader", label: "Dieplader" },
+      { value: "tautliner", label: "Tautliner" },
+    ],
+    []
+  );
 
-  const loads = [
-    { value: "one_pallet", label: "1× pallet" },
-    { value: "quarter", label: "¼ trailer" },
-    { value: "half", label: "½ trailer" },
-    { value: "three_quarter", label: "¾ trailer" },
-    { value: "full", label: "Volle trailer" }
-  ];
+  const loads = useMemo(
+    () => [
+      { value: "one_pallet", label: "1× pallet" },
+      { value: "quarter", label: "¼ trailer" },
+      { value: "half", label: "½ trailer" },
+      { value: "three_quarter", label: "¾ trailer" },
+      { value: "full", label: "Volle trailer" },
+    ],
+    []
+  );
 
   function onChange(e) {
     const { name, value } = e.target;
@@ -64,7 +68,10 @@ export default function App() {
   }
 
   function onToggleOption(key) {
-    setForm((f) => ({ ...f, options: { ...f.options, [key]: !f.options[key] } }));
+    setForm((f) => ({
+      ...f,
+      options: { ...f.options, [key]: !f.options[key] },
+    }));
   }
 
   function onLoadChoice(e) {
@@ -73,62 +80,49 @@ export default function App() {
   }
 
   async function onQuote(e) {
-  e?.preventDefault?.();
-  setError("");
+    e?.preventDefault?.();
+    setError("");
 
-  // Alleen Van en Naar verplicht
-  if (!form.from.trim() || !form.to.trim()) {
-    return setError("Vul zowel Van als Naar in.");
-  }
-
-  try {
-    setLoading(true);
-
-    const res = await fetch("/.netlify/functions/quote", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form),
-    });
-
-    const data = await res.json();
-
-    if (!res.ok) {
-      throw new Error(data?.detail || data?.error || "Internal error");
+    // Alleen Van en Naar verplicht
+    if (!form.from.trim() || !form.to.trim()) {
+      return setError("Vul zowel Van als Naar in.");
     }
-
-    setQuote(data);
-  } catch (err) {
-    setError(err.message || "Internal error");
-  } finally {
-    setLoading(false);
-  }
-}
-
 
     try {
       setBusy(true);
+
+      // payload naar function (zoals je eerder deed)
       const opts = {
         ...form.options,
         load_grade: form.load_grade,
         load_unload_internal: form.load_choice === "internal",
-        load_unload_external: form.load_choice === "external"
+        load_unload_external: form.load_choice === "external",
       };
+
       const payload = {
         from: form.from,
         to: form.to,
         trailer_type: form.trailer_type,
-        options: opts
+        options: opts,
       };
+
       const res = await fetch(API_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || "Onbekende fout");
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(data?.detail || data?.error || "Internal error");
+      }
+
+      // reference alleen client-side meegeven aan quote (voor PDF)
       setQuote({ ...data, reference: form.reference });
     } catch (err) {
-      setError(String(err.message || err));
+      setError(String(err?.message || err));
+      setQuote(null);
     } finally {
       setBusy(false);
     }
@@ -144,17 +138,18 @@ export default function App() {
       trailer_type: "vlakke",
       load_grade: "full",
       load_choice: "external",
-      options: { autolaad_kraan: false, combined: false, km_levy: false }
+      options: { autolaad_kraan: false, km_levy: false },
     });
   }
 
   async function onPDF() {
     if (!quote) return;
+
     await exportQuoteToPDF(quote, {
       reference: quote.reference,
       logoUrl: "/logo.jpg",
       company: "The Coatinc Company",
-      title: "Coatinc Transport berekening"
+      title: "Coatinc Transport berekening",
     });
   }
 
@@ -163,7 +158,8 @@ export default function App() {
     const rows = [];
 
     // Laden/Lossen gecombineerd in 1 regel
-    const loadUnload = Number(breakdown.handling_load || 0) + Number(breakdown.handling_unload || 0);
+    const loadUnload =
+      Number(breakdown.handling_load || 0) + Number(breakdown.handling_unload || 0);
     if (Math.abs(loadUnload) >= 0.005) rows.push(["handling_load_unload", loadUnload]);
 
     // Aanrijden / Afrijden
@@ -181,6 +177,7 @@ export default function App() {
       if (Math.abs(Number(v || 0)) < 0.005) continue;
       rows.push([k, v]);
     }
+
     return rows.map(([k, v]) => [LABELS[k] || k, Number(v)]);
   }
 
@@ -195,9 +192,7 @@ export default function App() {
           {/* Referentie + adressen */}
           <div className="grid sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium mb-1">
-                Referentie 
-              </label>
+              <label className="block text-sm font-medium mb-1">Referentie</label>
               <input
                 className="w-full border rounded px-3 py-2"
                 name="reference"
@@ -207,6 +202,7 @@ export default function App() {
               />
             </div>
             <div />
+
             <div>
               <label className="block text-sm font-medium mb-1">Van</label>
               <input
@@ -218,6 +214,7 @@ export default function App() {
                 required
               />
             </div>
+
             <div>
               <label className="block text-sm font-medium mb-1">Naar</label>
               <input
@@ -241,8 +238,10 @@ export default function App() {
                 value={form.trailer_type}
                 onChange={onChange}
               >
-                {trailers.map(t => (
-                  <option key={t.value} value={t.value}>{t.label}</option>
+                {trailers.map((t) => (
+                  <option key={t.value} value={t.value}>
+                    {t.label}
+                  </option>
                 ))}
               </select>
             </div>
@@ -255,8 +254,10 @@ export default function App() {
                 value={form.load_grade}
                 onChange={onChange}
               >
-                {loads.map(l => (
-                  <option key={l.value} value={l.value}>{l.label}</option>
+                {loads.map((l) => (
+                  <option key={l.value} value={l.value}>
+                    {l.label}
+                  </option>
                 ))}
               </select>
             </div>
@@ -269,6 +270,7 @@ export default function App() {
               >
                 {busy ? "Berekenen…" : "Bereken tarief"}
               </button>
+
               <button
                 type="button"
                 onClick={onReset}
@@ -302,11 +304,11 @@ export default function App() {
                 checked={form.load_choice === "external"}
                 onChange={onLoadChoice}
               />
-              <span>Externe Transport</span>
+              <span>Externe transport</span>
             </label>
           </fieldset>
 
-          {/* Opties (zonder gecombineerd transport) */}
+          {/* Opties */}
           <fieldset className="grid sm:grid-cols-2 gap-2">
             <legend className="text-sm font-medium mb-1">Opties</legend>
 
@@ -346,6 +348,7 @@ export default function App() {
                   Afstand: <strong>{quote?.derived?.distance_km ?? 0} km</strong>
                 </div>
               </div>
+
               <div className="text-sm text-neutral-600 mt-1">
                 Referentie: <strong>{quote.reference || "-"}</strong>
               </div>
@@ -355,12 +358,13 @@ export default function App() {
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <tbody>
-                    {buildVisibleRows(quote?.breakdown).map(([label, value]) => (
+                    {visibleRows.map(([label, value]) => (
                       <tr key={label} className="border-b last:border-b-0">
                         <td className="py-2 pr-3">{label}</td>
                         <td className="py-2 pl-3 text-right font-semibold">{eur(value)}</td>
                       </tr>
                     ))}
+
                     <tr>
                       <td className="py-2 pr-3 font-semibold">Totaal</td>
                       <td className="py-2 pl-3 text-right text-emerald-700 font-bold">
@@ -375,10 +379,18 @@ export default function App() {
               <div className="mt-4 text-sm text-neutral-700">
                 <div className="font-medium mb-1">Urenoverzicht</div>
                 <ul className="grid sm:grid-cols-4 gap-2">
-                  <li>Aanrijden: <strong>{quote?.derived?.approach_hours ?? 0} u</strong></li>
-                  <li>Laden: <strong>{quote?.derived?.load_hours ?? 0} u</strong></li>
-                  <li>Lossen: <strong>{quote?.derived?.unload_hours ?? 0} u</strong></li>
-                  <li>Afrijden: <strong>{quote?.derived?.depart_hours ?? 0} u</strong></li>
+                  <li>
+                    Aanrijden: <strong>{quote?.derived?.approach_hours ?? 0} u</strong>
+                  </li>
+                  <li>
+                    Laden: <strong>{quote?.derived?.load_hours ?? 0} u</strong>
+                  </li>
+                  <li>
+                    Lossen: <strong>{quote?.derived?.unload_hours ?? 0} u</strong>
+                  </li>
+                  <li>
+                    Afrijden: <strong>{quote?.derived?.depart_hours ?? 0} u</strong>
+                  </li>
                 </ul>
               </div>
 
@@ -389,6 +401,7 @@ export default function App() {
                 >
                   PDF downloaden
                 </button>
+
                 <button
                   onClick={onReset}
                   className="inline-flex items-center justify-center px-4 py-2 rounded border hover:bg-neutral-100"
